@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"radgateway/internal/admin"
 	"radgateway/internal/api"
@@ -43,7 +44,16 @@ func main() {
 	handler := middleware.WithRequestContext(protectedMux)
 
 	log.Printf("rad-gateway listening on %s", cfg.ListenAddr)
-	if err := http.ListenAndServe(cfg.ListenAddr, handler); err != nil {
+	server := &http.Server{
+		Addr:              cfg.ListenAddr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }
