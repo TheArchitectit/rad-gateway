@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Go test
+        run: go test ./... -coverprofile=coverage.out
+
+      - name: Go coverage summary
+        run: go tool cover -func=coverage.out
+
+      - name: Go build
+        run: go build ./...
+
+      - name: Install security tools
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Govulncheck
+        run: govulncheck ./...
+
+      - name: Gosec
+        run: gosec ./...
+
+      - name: Guardrails failure list
+        run: python3 scripts/log_failure.py --list
+
+      - name: Guardrails regression check
+        run: python3 scripts/regression_check.py --all --verbose
