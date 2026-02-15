@@ -29,3 +29,11 @@
 - Add management auth + RBAC roles.
 - Add steampunk-themed admin UI labels while preserving technical metric naming.
 - Add API docs site with compatibility examples for OpenAI, Anthropic, Gemini clients.
+
+## Milestone 6: Agent Interop Layer
+
+- Add A2A discovery and task endpoints (`/.well-known/agent.json`, `/a2a/tasks/*`).
+- Add AG-UI streaming surfaces for lifecycle/tool/state events.
+- Add targeted MCP bridge for tool/resource connections with strict auth boundaries.
+- Add protocol conformance fixtures and regression checks for A2A and AG-UI flows.
+- Keep ACP/ANP as tracked watchlist items; no production dependency in this milestone.

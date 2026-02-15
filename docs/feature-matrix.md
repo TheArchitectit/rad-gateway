@@ -20,6 +20,11 @@
 | Quotas | `/v0/quotas*`, `services/quota/*` | `biz/quota.go` | v1: request/token budget middleware | Advanced checker windows deferred |
 | Tracing/threads | usage/perf records in management APIs | README tracing/thread model, middleware trace/thread | Yes | Request ID + Trace ID mandatory |
 | Admin APIs | `/v0/management/*` | `/admin/*`, GraphQL + OpenAPI group | v1: lightweight REST admin | Avoid GraphQL in MVP |
+| A2A agent interoperability | N/A (not first-class) | N/A (not first-class) | Yes (v1.1) | Add Agent Card, task lifecycle, SSE task updates |
+| AG-UI event protocol | N/A | N/A | Yes (v1.1) | Frontend-backend event stream contract for agent UX |
+| MCP tool/context bridge | N/A | N/A | Yes (targeted) | Scope to tool/resource access, not agent orchestration |
+| ACP compatibility | N/A | N/A | No (defer) | ACP repo is archived and migrated toward A2A direction |
+| ANP compatibility | N/A | N/A | No (defer) | Track maturity; evaluate once production SDKs stabilize |
 
 ## v1 Scope (Build Now)
 
@@ -38,3 +43,4 @@
 - Persistent relational storage and migrations.
 - Full Responses API fidelity and image edit/speech APIs.
 - Circuit breaker state persistence and adaptive load-balancing telemetry loops.
+- ACP and ANP protocol support (watchlist until stronger implementation maturity).
