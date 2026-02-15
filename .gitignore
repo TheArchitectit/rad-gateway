@@ -1,0 +1,16 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local state
+.teams/
+
+# Build artifacts
+bin/
+dist/
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
