@@ -2,6 +2,21 @@
 
 Go-based API gateway scaffold inspired by Plexus and AxonHub feature patterns.
 
+## Status
+
+`Alpha`
+
+## Project Goal
+
+RAD Gateway (Brass Relay) aims to be a production-capable gateway that provides a single, stable API surface across major model ecosystems while preserving compatibility with existing clients.
+
+Current goals:
+
+- provide OpenAI-, Anthropic-, and Gemini-compatible request surfaces
+- route requests across providers with retry/failover behavior and traceable usage records
+- keep operations simple with lightweight management endpoints and explicit `.env`-based secret handling
+- add agent interoperability in the next phase (A2A + AG-UI, with scoped MCP integration)
+
 ## Run
 
 ```bash
