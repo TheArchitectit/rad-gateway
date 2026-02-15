@@ -68,6 +68,6 @@ Decision: monitor maturity and revisit when SDK/runtime integration path is lowe
 
 - A2A repository and spec: `https://github.com/a2aproject/A2A`, `https://a2a-protocol.org/latest/specification/`
 - AG-UI docs: `https://docs.ag-ui.com/introduction`, `https://docs.ag-ui.com/concepts/events`, `https://docs.ag-ui.com/agentic-protocols`
-- MCP spec/docs: `https://modelcontextprotocol.io/specification/2025-11-25`, `https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices`
+- MCP spec/docs: `https://modelcontextprotocol.io/latest/specification/`, `https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices`
 - ACP repository and migration notice: `https://github.com/i-am-bee/acp`
 - ANP repository: `https://github.com/agent-network-protocol/AgentNetworkProtocol`

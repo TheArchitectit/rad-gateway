@@ -46,6 +46,7 @@ Planned (next phase):
 - `POST /a2a/tasks/send`
 - `POST /a2a/tasks/sendSubscribe`
 - `GET /a2a/tasks/{taskId}`
+- `POST /a2a/tasks/{taskId}/cancel`
 - `GET /v1/agents/{agentId}/stream`
 
 ## Docs

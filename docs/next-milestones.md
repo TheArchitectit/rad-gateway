@@ -34,6 +34,7 @@
 
 - Add A2A discovery and task endpoints (`/.well-known/agent.json`, `/a2a/tasks/*`).
 - Add AG-UI streaming surfaces for lifecycle/tool/state events.
+- Add AG-UI stream endpoint (`GET /v1/agents/{agentId}/stream`) for client subscriptions.
 - Add targeted MCP bridge for tool/resource connections with strict auth boundaries.
 - Add protocol conformance fixtures and regression checks for A2A and AG-UI flows.
 - Keep ACP/ANP as tracked watchlist items; no production dependency in this milestone.

@@ -9,38 +9,40 @@ Define the parity contract for `rad-gateway` by extracting implementation-critic
 ### Plexus (local)
 
 - Route/auth normalization and protected route registration:
-  - `/mnt/ollama/git/plexus/plexus/packages/backend/src/routes/inference/index.ts`
+  - `plexus/packages/backend/src/routes/inference/index.ts`
 - Routing decision logic (direct routing, alias resolution, selector, cooldown filtering, API-type matching):
-  - `/mnt/ollama/git/plexus/plexus/packages/backend/src/services/router.ts`
+  - `plexus/packages/backend/src/services/router.ts`
 - Dispatcher behavior (target API selection, pass-through optimization, provider request execution, error cooldown parsing, streaming/non-streaming handlers, modality-specific dispatch):
-  - `/mnt/ollama/git/plexus/plexus/packages/backend/src/services/dispatcher.ts`
+  - `plexus/packages/backend/src/services/dispatcher.ts`
 - Management API composition:
-  - `/mnt/ollama/git/plexus/plexus/packages/backend/src/routes/management.ts`
+  - `plexus/packages/backend/src/routes/management.ts`
 - Usage management endpoints and SSE event stream:
-  - `/mnt/ollama/git/plexus/plexus/packages/backend/src/routes/management/usage.ts`
+  - `plexus/packages/backend/src/routes/management/usage.ts`
 - Quota endpoints and scheduler-backed quota history/check-now APIs:
-  - `/mnt/ollama/git/plexus/plexus/packages/backend/src/routes/management/quotas.ts`
-  - `/mnt/ollama/git/plexus/plexus/packages/backend/src/services/quota/quota-scheduler.ts`
+  - `plexus/packages/backend/src/routes/management/quotas.ts`
+  - `plexus/packages/backend/src/services/quota/quota-scheduler.ts`
 
 ### AxonHub (local)
 
 - Route groups and middleware boundaries (public/admin/openapi/api/gemini alias):
-  - `/mnt/ollama/git/axonhub/internal/server/routes.go`
+  - `axonhub/internal/server/routes.go`
 - Orchestrator and load balancer strategy model:
-  - `/mnt/ollama/git/axonhub/internal/server/orchestrator/orchestrator.go`
-  - `/mnt/ollama/git/axonhub/internal/server/orchestrator/load_balancer.go`
-  - `/mnt/ollama/git/axonhub/internal/server/orchestrator/retry.go`
-  - `/mnt/ollama/git/axonhub/internal/server/orchestrator/model_circuit_breaker.go`
+  - `axonhub/internal/server/orchestrator/orchestrator.go`
+  - `axonhub/internal/server/orchestrator/load_balancer.go`
+  - `axonhub/internal/server/orchestrator/retry.go`
+  - `axonhub/internal/server/orchestrator/model_circuit_breaker.go`
 - Trace/thread middleware:
-  - `/mnt/ollama/git/axonhub/internal/server/middleware/trace.go`
-  - `/mnt/ollama/git/axonhub/internal/server/middleware/thread.go`
+  - `axonhub/internal/server/middleware/trace.go`
+  - `axonhub/internal/server/middleware/thread.go`
 - Persistence model (Ent schemas):
-  - `/mnt/ollama/git/axonhub/internal/ent/schema/request.go`
-  - `/mnt/ollama/git/axonhub/internal/ent/schema/request_execution.go`
-  - `/mnt/ollama/git/axonhub/internal/ent/schema/trace.go`
-  - `/mnt/ollama/git/axonhub/internal/ent/schema/thread.go`
-  - `/mnt/ollama/git/axonhub/internal/ent/schema/channel.go`
-  - `/mnt/ollama/git/axonhub/internal/ent/schema/model.go`
+  - `axonhub/internal/ent/schema/request.go`
+  - `axonhub/internal/ent/schema/request_execution.go`
+  - `axonhub/internal/ent/schema/trace.go`
+  - `axonhub/internal/ent/schema/thread.go`
+  - `axonhub/internal/ent/schema/channel.go`
+  - `axonhub/internal/ent/schema/model.go`
+
+Note: paths above are repository-relative and assume local clones of `plexus` and `axonhub` adjacent to this repository.
 
 ## Parity-Critical Contracts
 

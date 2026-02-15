@@ -36,7 +36,7 @@ Build a Go-native AI gateway with Plexus + AxonHub feature parity, preserving st
 
 ## Detailed Feature Workstreams
 
-## 1) Compatibility Surface
+### 1) Compatibility Surface
 
 - Implement and harden:
   - `/v1/chat/completions`
@@ -49,7 +49,7 @@ Build a Go-native AI gateway with Plexus + AxonHub feature parity, preserving st
   - `/v1beta/models/*action`
 - Add endpoint-level behavior fixtures for parity assertions.
 
-## 2) Provider Orchestration
+### 2) Provider Orchestration
 
 - Candidate resolution:
   - model alias resolution
@@ -64,7 +64,7 @@ Build a Go-native AI gateway with Plexus + AxonHub feature parity, preserving st
   - v1.1 trace-aware preference
   - v2 adaptive/circuit-breaker persisted state
 
-## 3) Auth, Access, and Security
+### 3) Auth, Access, and Security
 
 - Unified key extraction:
   - bearer
@@ -79,7 +79,7 @@ Build a Go-native AI gateway with Plexus + AxonHub feature parity, preserving st
   - CI security scans (`govulncheck`, `gosec`)
   - guardrails checks in local and CI workflows
 
-## 4) Usage, Quota, and Cost
+### 4) Usage, Quota, and Cost
 
 - Usage records per request:
   - incoming API/model
@@ -90,7 +90,7 @@ Build a Go-native AI gateway with Plexus + AxonHub feature parity, preserving st
   - manual and scheduled checks
   - historical snapshots and reset projections
 
-## 5) Trace and Thread Continuity
+### 5) Trace and Thread Continuity
 
 - Request-scoped IDs:
   - request ID
@@ -98,13 +98,13 @@ Build a Go-native AI gateway with Plexus + AxonHub feature parity, preserving st
   - optional thread semantics (next increment)
 - Cross-request continuity for conversational and responses APIs.
 
-## 6) Admin and Operations
+### 6) Admin and Operations
 
 - Admin endpoints for config snapshot, usage, traces.
 - Operational docs and runbooks under `docs/operations/`.
 - SLO and release controls defined for Phase 5 gate readiness.
 
-## 7) Multi-Agent Interoperability
+### 7) Multi-Agent Interoperability
 
 - A2A (agent-to-agent) as the primary interop protocol:
   - Agent Card publication and discovery

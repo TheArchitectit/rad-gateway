@@ -69,8 +69,10 @@
   - `/.well-known/agent.json`
   - `/a2a/tasks/send`
   - `/a2a/tasks/sendSubscribe`
-  - `/a2a/tasks/{taskId}` and cancel flow
+  - `/a2a/tasks/{taskId}`
+  - `/a2a/tasks/{taskId}/cancel`
 - AG-UI support:
+  - `/v1/agents/{agentId}/stream`
   - backend event stream contract for run lifecycle, tool calls, and state deltas
   - session-scoped event replay for UI continuity
 - MCP bridge (targeted):
