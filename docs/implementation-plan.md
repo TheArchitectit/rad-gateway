@@ -24,6 +24,12 @@
   - Public compatibility handlers (`/v1/*`, `/v1beta/*`) and health route.
 - `internal/admin`
   - Management API handlers (`/v0/management/config`, `/v0/management/usage`).
+- `internal/a2a` (planned)
+  - Agent Card discovery, task lifecycle endpoints, streaming task updates.
+- `internal/agui` (planned)
+  - AG-UI event stream handlers, state snapshot/delta envelopes.
+- `internal/streaming` (planned)
+  - Shared SSE/WebSocket primitives for protocol streaming surfaces.
 
 ## Request Lifecycle (v1)
 
@@ -57,9 +63,26 @@
 - OAuth session workflows.
 - Advanced balancing (circuit breaker, adaptive scoring).
 
+### Phase 4 (Agent Interop)
+
+- A2A support:
+  - `/.well-known/agent.json`
+  - `/a2a/tasks/send`
+  - `/a2a/tasks/sendSubscribe`
+  - `/a2a/tasks/{taskId}`
+  - `/a2a/tasks/{taskId}/cancel`
+- AG-UI support:
+  - `/v1/agents/{agentId}/stream`
+  - backend event stream contract for run lifecycle, tool calls, and state deltas
+  - session-scoped event replay for UI continuity
+- MCP bridge (targeted):
+  - connect tools/resources to agents via explicit auth and scope boundaries
+  - keep model routing/orchestration in core gateway, outside MCP responsibility
+
 ## MVP Out of Scope
 
 - Full GraphQL admin plane.
 - Rich RBAC scopes/project multi-tenancy.
 - Full Responses API edge-case parity.
 - Production-grade distributed tracing backend.
+- ACP and ANP protocol implementation (evaluate later; not required for near-term launch).
