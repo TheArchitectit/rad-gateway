@@ -40,9 +40,22 @@ RAD_API_KEYS=default:replace-with-real-key
 - `GET /v0/management/usage`
 - `GET /v0/management/traces`
 
+Planned (next phase):
+
+- `GET /.well-known/agent.json`
+- `POST /a2a/tasks/send`
+- `POST /a2a/tasks/sendSubscribe`
+- `GET /a2a/tasks/{taskId}`
+- `POST /a2a/tasks/{taskId}/cancel`
+- `GET /v1/agents/{agentId}/stream`
+
 ## Docs
 
 - `docs/feature-matrix.md`
+- `docs/reverse-engineering-report.md`
+- `docs/product-build-blueprint.md`
 - `docs/product-theme.md`
 - `docs/implementation-plan.md`
 - `docs/next-milestones.md`
+- `docs/review-teams.md`
+- `docs/protocol-stack-decision.md`
