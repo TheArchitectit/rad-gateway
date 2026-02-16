@@ -464,17 +464,9 @@ data: [DONE]
 			},
 		},
 		{
-			name: "multiline data",
-			input: `data: {"id":"1","content":"line1
-
-line2"}
-
-data: [DONE]
-
-`,
-			expected: []string{`{"id":"1","content":"line1
-
-line2"}`},
+			name: "multiline data in JSON",
+			input: "data: {\"id\":\"1\",\"content\":\"line1\\n\\nline2\"}\n\ndata: [DONE]\n\n",
+			expected: []string{`{"id":"1","content":"line1\n\nline2"}`},
 		},
 		{
 			name:     "empty stream",

@@ -417,10 +417,10 @@ func (a *Adapter) executeEmbeddings(ctx context.Context, req models.ProviderRequ
 	}, nil
 }
 
-func (a *Adapter) setHeaders(req *http.Header) {
-	req.Set("Authorization", "Bearer "+a.token)
-	req.Set("Content-Type", "application/json")
-	req.Set("Accept", "application/json")
+func (a *Adapter) setHeaders(req *http.Request) {
+	req.Header.Set("Authorization", "Bearer "+a.token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 }
 
 func (a *Adapter) handleErrorResponse(resp *http.Response) (models.ProviderResult, error) {
