@@ -6,10 +6,14 @@ type Message struct {
 }
 
 type ChatCompletionRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-	Stream   bool      `json:"stream,omitempty"`
-	User     string    `json:"user,omitempty"`
+	Model       string    `json:"model"`
+	Messages    []Message `json:"messages"`
+	Stream      bool      `json:"stream,omitempty"`
+	User        string    `json:"user,omitempty"`
+	MaxTokens   int       `json:"max_tokens,omitempty"`
+	Temperature float64   `json:"temperature,omitempty"`
+	TopP        float64   `json:"top_p,omitempty"`
+	Stop        []string  `json:"stop,omitempty"`
 }
 
 type Usage struct {
@@ -20,13 +24,15 @@ type Usage struct {
 }
 
 type ChatChoice struct {
-	Index   int     `json:"index"`
-	Message Message `json:"message"`
+	Index        int     `json:"index"`
+	Message      Message `json:"message"`
+	FinishReason string  `json:"finish_reason,omitempty"`
 }
 
 type ChatCompletionResponse struct {
 	ID      string       `json:"id"`
 	Object  string       `json:"object"`
+	Created int64        `json:"created,omitempty"`
 	Model   string       `json:"model"`
 	Choices []ChatChoice `json:"choices"`
 	Usage   Usage        `json:"usage"`
