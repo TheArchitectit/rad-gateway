@@ -1,3 +1,55 @@
+# Release Notes - v0.3.0-alpha
+
+**Release Date**: 2026-02-16
+**Status**: Alpha
+**Codename**: Brass Relay Team Review
+
+---
+
+## Overview
+
+RAD Gateway v0.3.0-alpha completes the Team India security review and implements all P0/P1 fixes for the beta deployment. This release includes the Gemini adapter, comprehensive deployment documentation, and beta-ready architecture.
+
+---
+
+## What's New
+
+### Gemini Adapter (Complete)
+
+- **Full Implementation**: 2,282 lines of production-ready code
+- **Test Coverage**: 36 comprehensive tests (1,357 lines)
+- **Features**: x-goog-api-key auth, streaming support, role mapping
+- **Factory Integration**: Registered with provider factory
+
+### Team India Security Review (Complete)
+
+Comprehensive multi-disciplinary review with all fixes implemented:
+
+**P0 Critical Fixes** (2 items):
+- PostgreSQL port exposure removed
+- Backup procedures documented
+
+**P1 High Fixes** (6 items):
+- Backup exclusion documentation
+- Error handling in startup scripts
+- Monitoring/Alerting procedures
+- Deployment/Rollback procedures
+- Pre-deployment validation script
+- Health check integration tests
+
+### Beta Deployment Architecture
+
+Complete beta deployment documentation:
+- Architecture overview with ASCII diagrams
+- Service dependencies and access URLs
+- Backup and restore procedures
+- Monitoring and alerting setup
+- Beta vs Production skip list
+
+---
+
+## Previous Release: v0.2.0-alpha
+
 # Release Notes - v0.2.0-alpha
 
 **Release Date**: 2026-02-16
