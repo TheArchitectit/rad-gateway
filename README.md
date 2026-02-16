@@ -92,17 +92,28 @@ Planned (next phase):
 
 ## Docs
 
+### Getting Started
+- `docs/getting-started.md` - Quick start and deployment guide
+
+### Product & Planning
 - `docs/feature-matrix.md`
 - `docs/reverse-engineering-report.md`
 - `docs/product-build-blueprint.md`
 - `docs/product-theme.md`
 - `docs/implementation-plan.md`
 - `docs/next-milestones.md`
-- `docs/review-teams.md`
-- `docs/protocol-stack-decision.md`
+
+### Operations
 - `docs/operations/deployment-targets.md`
+- `docs/operations/deployment-radgateway01.md` - Production deployment spec
+
+### Team
 - `docs/team-structure-compliance.md` - Team organization (TEAM-007)
 - `docs/team-system-guide.md` - Team management commands
+- `docs/review-teams.md`
+
+### Technical
+- `docs/protocol-stack-decision.md`
 
 ## Team Structure (TEAM-007 Compliant)
 
