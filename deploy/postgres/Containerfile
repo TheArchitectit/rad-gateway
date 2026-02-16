@@ -1,0 +1,90 @@
+# PostgreSQL Container for Golden Stack
+# Provides database backend for Infisical and OpenBao services
+#
+# Build: podman build -f deploy/postgres/Containerfile -t golden-stack-postgres:latest
+# Run:   podman run -d --name postgres -p 5432:5432 -v pgdata:/var/lib/postgresql/data golden-stack-postgres:latest
+
+FROM postgres:16-alpine
+
+LABEL maintainer="Golden Stack Team"
+LABEL description="PostgreSQL container for Golden Stack (Infisical and OpenBao)"
+LABEL version="1.0.0"
+
+# Install additional tools for initialization, health checks, and backup
+RUN apk --no-cache add \
+    bash \
+    curl \
+    jq \
+    postgresql16-contrib \
+    tzdata \
+    && rm -rf /var/cache/apk/*
+
+# Create directories for initialization scripts and configuration
+RUN mkdir -p /docker-entrypoint-initdb.d /etc/postgresql/scripts
+
+# Copy initialization scripts
+COPY init/ /docker-entrypoint-initdb.d/
+COPY postgresql.conf /etc/postgresql/
+COPY health-check.sh /etc/postgresql/scripts/
+
+# Set executable permissions on scripts
+RUN chmod +x /docker-entrypoint-initdb.d/*.sh \
+    /etc/postgresql/scripts/health-check.sh
+
+# Create custom PostgreSQL configuration directory
+RUN mkdir -p /etc/postgresql/conf.d
+
+# Set proper ownership for PostgreSQL directories
+RUN chown -R postgres:postgres /docker-entrypoint-initdb.d \
+    /etc/postgresql \
+    /etc/postgresql/scripts
+
+# Environment variables for database configuration
+# These can be overridden at runtime
+ENV POSTGRES_USER=postgres
+ENV POSTGRES_PASSWORD_FILE=/run/secrets/postgres-password
+ENV POSTGRES_DB=postgres
+ENV POSTGRES_INITDB_ARGS="--encoding=UTF8 --locale=en_US.UTF-8"
+
+# Infisical database configuration
+ENV INFISICAL_DB_NAME=infisical
+ENV INFISICAL_DB_USER=infisical
+ENV INFISICAL_DB_PASSWORD_FILE=/run/secrets/infisical-db-password
+
+# OpenBao database configuration
+ENV OPENBAO_DB_NAME=openbao
+ENV OPENBAO_DB_USER=openbao
+ENV OPENBAO_DB_PASSWORD_FILE=/run/secrets/openbao-db-password
+
+# Performance and tuning
+ENV PGDATA=/var/lib/postgresql/data
+ENV POSTGRES_INITDB_WALDIR=
+
+# Logging configuration
+ENV POSTGRES_LOG_STATEMENT=none
+ENV POSTGRES_LOG_MIN_DURATION_STATEMENT=1000
+ENV POSTGRES_LOG_LINE_PREFIX="%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h "
+
+# Connection limits
+ENV POSTGRES_MAX_CONNECTIONS=200
+ENV POSTGRES_SHARED_BUFFERS=256MB
+ENV POSTGRES_EFFECTIVE_CACHE_SIZE=1GB
+
+# Security settings
+ENV POSTGRES_SSL_MODE=prefer
+
+# Expose PostgreSQL port
+EXPOSE 5432
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
+    CMD /etc/postgresql/scripts/health-check.sh || exit 1
+
+# Volume for persistent data
+VOLUME ["/var/lib/postgresql/data"]
+
+# Switch to postgres user (provided by base image)
+USER postgres
+
+# The base image's entrypoint handles initialization and starts PostgreSQL
+# Our scripts in /docker-entrypoint-initdb.d/ are executed automatically

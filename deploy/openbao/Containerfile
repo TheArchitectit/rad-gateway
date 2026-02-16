@@ -1,0 +1,67 @@
+# OpenBao Container for Golden Stack
+# OpenBao is a secret management platform (HashiCorp Vault fork)
+# This container provides cold vault functionality with PostgreSQL backend
+
+FROM openbao/openbao:latest
+
+LABEL maintainer="Golden Stack Team"
+LABEL description="OpenBao container with PostgreSQL backend for cold vault secrets"
+LABEL version="1.0.0"
+
+# Install additional tools for initialization and health checks
+RUN apk --no-cache add \
+    postgresql16-client \
+    jq \
+    curl \
+    bash \
+    ca-certificates \
+    tzdata
+
+# Create OpenBao directories
+RUN mkdir -p /openbao/config /openbao/data /openbao/logs /openbao/scripts
+
+# Copy configuration and scripts
+COPY config.hcl /openbao/config/
+COPY init.sh /openbao/scripts/
+COPY health-check.sh /openbao/scripts/
+
+# Set executable permissions
+RUN chmod +x /openbao/scripts/*.sh
+
+# Environment variables
+ENV BAO_ADDR=http://127.0.0.1:8200
+ENV BAO_CONFIG_PATH=/openbao/config/config.hcl
+ENV BAO_DATA_PATH=/openbao/data
+ENV BAO_LOG_LEVEL=info
+ENV BAO_UI=true
+
+# PostgreSQL connection defaults (override at runtime)
+ENV BAO_PG_HOST=localhost
+ENV BAO_PG_PORT=5432
+ENV BAO_PG_DATABASE=openbao
+ENV BAO_PG_USER=openbao
+ENV BAO_PG_PASSWORD_FILE=/openbao/config/pg-password
+ENV BAO_PG_SSLMODE=prefer
+
+# Cold vault specific settings
+ENV BAO_COLD_VAULT_RETENTION_DAYS=3650
+ENV BAO_COLD_VAULT_MAX_VERSIONS=100
+
+# Expose OpenBao ports
+# 8200 - API and UI
+# 8201 - Cluster communication (if clustering enabled)
+EXPOSE 8200 8201
+
+# Volume for persistent data (audit logs, tokens, etc.)
+VOLUME /openbao/data
+VOLUME /openbao/logs
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD /openbao/scripts/health-check.sh || exit 1
+
+# Switch to non-root user (OpenBao image provides 'openbao' user)
+USER openbao
+
+# Entry point: run init script which will start OpenBao
+ENTRYPOINT ["/openbao/scripts/init.sh"]
