@@ -4,7 +4,33 @@ Go-based API gateway scaffold inspired by Plexus and AxonHub feature patterns.
 
 ## Status
 
-`Alpha`
+`Alpha` - **radgateway01 Successfully Deployed**
+
+The first production instance (radgateway01) has been deployed with:
+- Containerized deployment via Podman
+- Systemd service management
+- Infisical secrets integration
+- Health monitoring enabled
+
+## Quick Start
+
+```bash
+# Clone and build
+git clone <repository-url>
+cd rad-gateway
+go build -o rad-gateway ./cmd/rad-gateway
+
+# Configure (create .env file)
+echo "RAD_API_KEYS=your-api-key" > .env
+
+# Run
+./rad-gateway
+
+# Verify
+curl http://localhost:8090/health
+```
+
+See [docs/getting-started.md](docs/getting-started.md) for detailed setup instructions.
 
 ## Project Goal
 
@@ -74,3 +100,33 @@ Planned (next phase):
 - `docs/next-milestones.md`
 - `docs/review-teams.md`
 - `docs/protocol-stack-decision.md`
+- `docs/operations/deployment-targets.md`
+- `docs/team-structure-compliance.md` - Team organization (TEAM-007)
+- `docs/team-system-guide.md` - Team management commands
+
+## Team Structure (TEAM-007 Compliant)
+
+All teams have 4-6 members. Teams are spun up/down as needed using Claude Code Team system.
+
+| Team | Purpose | Members | Status |
+|------|---------|---------|--------|
+| Team Alpha | Architecture & Design | 6 | 🟢 Active |
+| Team Bravo | Core Implementation | 6 | 🟢 Active |
+| Team Charlie | Security Hardening | 5 | 🟢 Active |
+| Team Delta | Quality Assurance | 5 | 🟢 Active |
+| Team Echo | Operations & Observability | 5 | 🟢 Active |
+| Team Foxtrot | Inspiration Analysis | 5 | ✅ Complete |
+| Team Golf | Documentation & Design | 6 | 🟢 Active |
+| **Team Hotel** | **Deployment & Infrastructure** | **5** | **🟢 Active (radgateway01)** |
+
+### Active Team Hotel Members
+
+| Member | Role | Task |
+|--------|------|------|
+| devops-lead | DevOps Lead | Verify deployment |
+| container-engineer | Container Engineer | Verify containers |
+| deployment-engineer | Deployment Engineer | Review scripts |
+| infrastructure-architect | Infrastructure Architect | Validate infrastructure |
+| systems-administrator | Systems Administrator | Check system health |
+
+See `docs/team-system-guide.md` for team management commands.

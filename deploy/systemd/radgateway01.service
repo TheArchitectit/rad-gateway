@@ -1,0 +1,62 @@
+[Unit]
+Description=RAD Gateway 01 (Brass Relay)
+Documentation=https://github.com/TheArchitectit/rad-gateway
+Requires=infisical.service
+After=infisical.service network.target
+
+[Service]
+Type=simple
+User=radgateway
+Group=radgateway
+WorkingDirectory=/opt/radgateway01
+
+# Environment
+Environment="INFISICAL_SERVICE_TOKEN_FILE=/opt/radgateway01/config/infisical-token"
+Environment="INFISICAL_WORKSPACE_ID=47f10766-4dad-4a67-b42a-1a4049beb196"
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Startup
+ExecStartPre=-/usr/bin/podman pull localhost/radgateway01:latest
+ExecStartPre=-/usr/bin/podman pod exists radgateway01 || /usr/bin/podman pod create --name radgateway01 --publish 8090:8090 --network bridge
+ExecStart=/usr/bin/podman run \
+    --pod radgateway01 \
+    --name radgateway01-app \
+    --rm \
+    --env-file /opt/radgateway01/config/env \
+    --volume radgateway01-data:/data \
+    --health-cmd "curl -f http://localhost:8090/health || exit 1" \
+    --health-interval 30s \
+    --health-timeout 10s \
+    --health-retries 3 \
+    localhost/radgateway01:latest
+
+# Stop
+ExecStop=/usr/bin/podman stop -t 30 radgateway01-app
+ExecStopPost=-/usr/bin/podman rm radgateway01-app
+
+# Restart configuration
+Restart=always
+RestartSec=10
+StartLimitInterval=60s
+StartLimitBurst=3
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=radgateway01
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/radgateway01/data /opt/radgateway01/logs
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

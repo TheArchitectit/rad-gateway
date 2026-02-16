@@ -1,0 +1,22 @@
+# RAD Gateway 01 Environment Configuration
+# Static environment variables - secrets are loaded from Infisical
+
+# Application Configuration
+RAD_LISTEN_ADDR=:8090
+RAD_LOG_LEVEL=info
+RAD_ENVIRONMENT=alpha
+
+# Data paths
+RAD_DATA_DIR=/data
+
+# Infisical Configuration
+INFISICAL_URL=http://localhost:8080
+INFISICAL_PROJECT_SLUG=radgateway-p-zwm
+INFISICAL_WORKSPACE_ID=47f10766-4dad-4a67-b42a-1a4049beb196
+INFISICAL_TOKEN_FILE=/opt/radgateway01/config/infisical-token
+
+# Secrets populated by startup script from Infisical:
+# - RAD_API_KEYS
+# - OPENAI_API_KEY
+# - ANTHROPIC_API_KEY
+# - GEMINI_API_KEY

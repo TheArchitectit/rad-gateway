@@ -14,3 +14,10 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+# Internal deployment docs (private network details)
+docs/operations/network-troubleshooting.md
+DEPLOYMENT-REPORT.md
+RUNBOOK.md
+scripts/
+/opt/
+
