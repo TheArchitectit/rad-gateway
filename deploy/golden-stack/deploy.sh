@@ -171,7 +171,6 @@ deploy_postgres() {
         --name postgres-golden \
         --network "$NETWORK_NAME" \
         --hostname postgres-golden \
-        -p "$POSTGRES_PORT:5432" \
         -e POSTGRES_USER=goldenstack \
         -e POSTGRES_PASSWORD="$(grep POSTGRES_PASSWORD "$DATA_DIR/.env" | cut -d= -f2)" \
         -e POSTGRES_DB=goldenstack \
@@ -337,7 +336,7 @@ show_status() {
     echo "Access URLs:"
     echo "  Infisical: http://localhost:$INFISICAL_PORT"
     echo "  OpenBao:   http://localhost:$OPENBAO_PORT"
-    echo "  PostgreSQL: localhost:$POSTGRES_PORT"
+    echo "  PostgreSQL: internal network only (postgres-golden:5432)"
     echo ""
     echo "Environment file: $DATA_DIR/.env"
     echo ""
