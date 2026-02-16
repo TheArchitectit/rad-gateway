@@ -1,8 +1,8 @@
-# Lessons Learned for Next Deployment (radgateway02+)
+# Container Deployment Lessons Learned
 
 ## Executive Summary
 
-This document captures critical lessons learned from the radgateway01 deployment to ensure smoother, more efficient deployments for radgateway02 and subsequent instances.
+This document captures critical lessons learned from RAD Gateway deployments to ensure smoother, more efficient future deployments.
 
 **Focus Areas**:
 - Podman networking complexities
@@ -16,7 +16,7 @@ This document captures critical lessons learned from the radgateway01 deployment
 ### Lesson: Rootful vs Rootless Networking
 
 **The Issue**:
-Podman's networking behavior differs significantly between rootful (sudo) and rootless modes. radgateway01 uses rootful Podman, which requires understanding of:
+Podman's networking behavior differs significantly between rootful (sudo) and rootless modes. <your-container-name> uses rootful Podman, which requires understanding of:
 - CNI plugins vs Netavark backend
 - Bridge network creation
 - Port forwarding at the firewall level
@@ -25,7 +25,7 @@ Podman's networking behavior differs significantly between rootful (sudo) and ro
 ```bash
 # Rootful pod creation uses bridge networking correctly
 sudo podman pod create \
-  --name radgateway01 \
+  --name <your-container-name> \
   --publish 8090:8090 \
   --network bridge
 ```
@@ -34,12 +34,12 @@ sudo podman pod create \
 - Confusion about when slirp4netvs vs bridge is used
 - Port binding conflicts when testing with rootless podman locally
 
-**Recommendations for radgateway02+**:
+**Recommendations for <your-container-name>+**:
 
 1. **Standardize on rootful mode** for production deployments
    ```bash
    # Always use sudo for production pod operations
-   sudo podman pod create --name radgateway02 --publish 8091:8090
+   sudo podman pod create --name <your-container-name> --publish 8091:8090
    ```
 
 2. **Document network backend** explicitly
@@ -55,7 +55,7 @@ sudo podman pod create \
    sudo podman network ls
 
    # Inspect pod network
-   sudo podman pod inspect radgateway02 --format '{{.InfraConfig.Networks}}'
+   sudo podman pod inspect <your-container-name> --format '{{.InfraConfig.Networks}}'
    ```
 
 ### Lesson: DNS Resolution Within Pods
@@ -85,14 +85,14 @@ curl http://host.containers.internal:8080/api/status
 2. **Add custom DNS if needed**
    ```bash
    sudo podman pod create \
-     --name radgateway02 \
-     --dns 172.16.30.45 \
+     --name <your-container-name> \
+     --dns <your-dns-server> \
      --publish 8091:8090
    ```
 
 3. **Test DNS resolution before deployment**
    ```bash
-   sudo podman run --rm --pod radgateway02 alpine nslookup host.containers.internal
+   sudo podman run --rm --pod <your-container-name> alpine nslookup host.containers.internal
    ```
 
 ---
@@ -123,13 +123,13 @@ Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)
 Chain FORWARD (policy DROP 0 packets, 0 bytes)
 ```
 
-**Recommendations for radgateway02+**:
+**Recommendations for <your-container-name>+**:
 
 ### 2.1 Pre-Deployment Firewall Checklist
 
 ```bash
 #!/bin/bash
-# /opt/radgateway02/bin/firewall-check.sh
+# /opt/<your-container-name>/bin/firewall-check.sh
 
 echo "Checking iptables FORWARD policy..."
 POLICY=$(sudo iptables -L FORWARD -n | grep "policy" | awk '{print $2}')
@@ -165,14 +165,14 @@ sudo ufw route allow in on cni-podman0 out on eth0
 ### 2.3 Automatic Rule Restoration
 
 ```bash
-# /etc/systemd/system/radgateway02-firewall.service
+# /etc/systemd/system/<your-container-name>-firewall.service
 [Unit]
 Description=RAD Gateway 02 Firewall Rules
-Before=radgateway02.service
+Before=<your-container-name>.service
 
 [Service]
 Type=oneshot
-ExecStart=/opt/radgateway02/bin/firewall-setup.sh
+ExecStart=/opt/<your-container-name>/bin/firewall-setup.sh
 RemainAfterExit=yes
 
 [Install]
@@ -180,7 +180,7 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-# /opt/radgateway02/bin/firewall-setup.sh
+# /opt/<your-container-name>/bin/firewall-setup.sh
 #!/bin/bash
 
 # Ensure FORWARD is ACCEPT
@@ -244,11 +244,11 @@ Security must be layered - no single control is sufficient.
 
 ### 3.1 User and Permission Model
 
-**Current State (radgateway01)**:
+**Current State**:
 - Container runs as root inside container (improvement needed)
 - Systemd service runs as `radgateway` user
 
-**Target State (radgateway02+)**:
+**Target State**:
 ```dockerfile
 # Dockerfile improvements
 FROM alpine:3.19
@@ -282,15 +282,15 @@ CMD ["./rad-gateway"]
 ```bash
 # Run container with security options
 sudo podman run -d \
-  --pod radgateway02 \
-  --name radgateway02-app \
+  --pod <your-container-name> \
+  --name <your-container-name>-app \
   --security-opt=no-new-privileges:true \
   --security-opt=seccomp=unconfined \
   --cap-drop=ALL \
   --cap-add=NET_BIND_SERVICE \
   --read-only \
   --tmpfs /tmp:noexec,nosuid,size=100m \
-  localhost/radgateway02:latest
+  localhost/<your-container-name>:latest
 ```
 
 ### 3.3 Capability Management
@@ -317,7 +317,7 @@ sudo podman run \
 # Mark root as read-only
 sudo podman run \
   --read-only \
-  --volume radgateway02-data:/data:rw \
+  --volume <your-container-name>-data:/data:rw \
   --tmpfs /tmp:rw,noexec,nosuid,size=100m \
   ...
 ```
@@ -333,16 +333,16 @@ sudo podman run \
 - Startup script fetches secrets from Infisical
 - Secrets stored in environment variables
 
-**Improved Approach for radgateway02+**:
+**Improved Approach for <your-container-name>+**:
 ```bash
 # Use Podman secrets for sensitive data
-sudo podman secret create infisical-token /opt/radgateway02/config/token.txt
+sudo podman secret create infisical-token /opt/<your-container-name>/config/token.txt
 
 # Mount secret as file (not environment variable)
 sudo podman run -d \
-  --pod radgateway02 \
+  --pod <your-container-name> \
   --secret infisical-token,target=/run/secrets/infisical-token,mode=0400 \
-  localhost/radgateway02:latest
+  localhost/<your-container-name>:latest
 ```
 
 **Application Modification**:
@@ -366,18 +366,18 @@ func loadServiceToken() (string, error) {
 **Create deployment script**:
 ```bash
 #!/bin/bash
-# /opt/radgateway02/bin/deploy.sh
+# /opt/<your-container-name>/bin/deploy.sh
 
 set -e
 
 VERSION=${1:-latest}
-POD_NAME="radgateway02"
+POD_NAME="<your-container-name>"
 PORT="8091"
 
-echo "[deploy] Starting deployment of radgateway02:${VERSION}..."
+echo "[deploy] Starting deployment of <your-container-name>:${VERSION}..."
 
 # Pre-deployment checks
-/opt/radgateway02/bin/pre-deploy-check.sh
+/opt/<your-container-name>/bin/pre-deploy-check.sh
 
 # Build/pull image
 if [ "$VERSION" = "latest" ]; then
@@ -435,12 +435,12 @@ sudo podman run -d \
 
 **Systemd Journal Integration**:
 ```ini
-# /etc/systemd/system/radgateway02.service
+# /etc/systemd/system/<your-container-name>.service
 [Service]
 # Forward container logs to journal
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=radgateway02
+SyslogIdentifier=<your-container-name>
 ```
 
 ### 4.3 Resource Limits
@@ -448,7 +448,7 @@ SyslogIdentifier=radgateway02
 **Add resource constraints**:
 ```bash
 sudo podman run -d \
-  --pod radgateway02 \
+  --pod <your-container-name> \
   --memory=512m \
   --memory-swap=512m \
   --cpus=1.0 \
@@ -458,7 +458,7 @@ sudo podman run -d \
 
 ---
 
-## 5. Checklist for radgateway02 Deployment
+## 5. Checklist for <your-container-name> Deployment
 
 ### Pre-Deployment
 
@@ -466,8 +466,8 @@ sudo podman run -d \
 - [ ] iptables FORWARD policy is ACCEPT
 - [ ] Port 8091 is available
 - [ ] Infisical is accessible from host
-- [ ] radgateway02 user exists
-- [ ] Directory structure created (/opt/radgateway02)
+- [ ] radgateway user exists
+- [ ] Directory structure created (/opt/<your-container-name>)
 - [ ] Secrets configured in Infisical
 
 ### Deployment
@@ -497,27 +497,27 @@ sudo podman run -d \
 ```bash
 # Pod status
 sudo podman pod ps
-sudo podman pod inspect radgateway02
+sudo podman pod inspect <your-container-name>
 
 # Container operations
-sudo podman logs -f radgateway02-app
-sudo podman exec -it radgateway02-app sh
-sudo podman stats radgateway02-app
+sudo podman logs -f <your-container-name>-app
+sudo podman exec -it <your-container-name>-app sh
+sudo podman stats <your-container-name>-app
 
 # Network debugging
 sudo iptables -L FORWARD -n -v
 sudo podman network inspect podman
 
 # Cleanup
-sudo podman pod stop radgateway02
-sudo podman pod rm radgateway02
+sudo podman pod stop <your-container-name>
+sudo podman pod rm <your-container-name>
 sudo podman system prune
 ```
 
 ### File Locations
 
 ```
-/opt/radgateway02/
+/opt/<your-container-name>/
 ├── bin/
 │   ├── deploy.sh
 │   ├── firewall-check.sh
@@ -528,20 +528,20 @@ sudo podman system prune
 ├── data/
 └── logs/
 
-/etc/systemd/system/radgateway02.service
-/etc/systemd/system/radgateway02-firewall.service
+/etc/systemd/system/<your-container-name>.service
+/etc/systemd/system/<your-container-name>-firewall.service
 ```
 
 ---
 
 ## Conclusion
 
-The radgateway01 deployment provided valuable insights into:
+The <your-container-name> deployment provided valuable insights into:
 1. **Podman networking** - Understanding bridge vs rootless modes
 2. **Firewall management** - Critical FORWARD rules for container connectivity
 3. **Security hardening** - Defense in depth with capabilities, read-only filesystems, and secrets management
 
-Applying these lessons to radgateway02+ will result in:
+Applying these lessons to future deployments will result in:
 - Faster deployments
 - More reliable networking
 - Improved security posture
@@ -549,6 +549,4 @@ Applying these lessons to radgateway02+ will result in:
 
 ---
 
-**Document Owner**: Container Engineer, Team Hotel
 **Last Updated**: 2026-02-16
-**Applies To**: radgateway02 and all future deployments

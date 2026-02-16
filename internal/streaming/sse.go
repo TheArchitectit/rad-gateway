@@ -43,13 +43,14 @@ func NewParser(r io.Reader) *Parser {
 func (p *Parser) Next() (Event, error) {
 	p.event = Event{}
 	p.scratch.Reset()
+	var hasFields bool
 
 	for {
 		line, err := p.reader.ReadBytes('\n')
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				// Process remaining data before EOF
-				if p.scratch.Len() > 0 || p.event.ID != "" || p.event.Event != "" {
+				if p.scratch.Len() > 0 || p.event.ID != "" || p.event.Event != "" || hasFields {
 					p.event.Data = p.scratch.String()
 					return p.event, nil
 				}
@@ -66,7 +67,7 @@ func (p *Parser) Next() (Event, error) {
 
 		// Empty line marks end of event
 		if len(line) == 0 {
-			if p.scratch.Len() > 0 || p.event.ID != "" || p.event.Event != "" {
+			if p.scratch.Len() > 0 || p.event.ID != "" || p.event.Event != "" || hasFields {
 				p.event.Data = p.scratch.String()
 				return p.event, nil
 			}
@@ -83,7 +84,7 @@ func (p *Parser) Next() (Event, error) {
 		if err := p.parseField(line); err != nil {
 			return Event{}, err
 		}
-		hasEventFields = true
+		hasFields = true
 	}
 }
 
