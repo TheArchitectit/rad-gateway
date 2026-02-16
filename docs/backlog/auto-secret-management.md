@@ -1,16 +1,38 @@
 # Backlog: Automatic Secret Management Integration
 
 **ID**: BACKLOG-001
-**Priority**: High
+**Priority**: Medium
 **Created**: 2026-02-16
-**Status**: Pending
+**Updated**: 2026-02-16
+**Status**: Post-Beta
+**Target**: v0.4.0+ (Post-Beta)
 **Sprint**: TBD
 
 ---
 
 ## Overview
 
-Implement automatic secret management integration for RAD Gateway using both Infisical (hot vault) and OpenBao (cold vault). Instead of relying solely on `.env` files, the gateway should dynamically fetch and rotate secrets from these platforms.
+**Beta Status**: Infisical-only for secrets management
+**Post-Beta**: Full integration with Infisical + OpenBao
+
+During beta, RAD Gateway uses **Infisical exclusively** for secrets management. This backlog item covers the **post-beta enhancement** to add automatic secret fetching and OpenBao cold vault integration.
+
+### Beta Simplification
+
+For beta, we intentionally simplified to reduce complexity:
+- ✅ Infisical handles all secrets (API keys, DB creds, JWT, encryption)
+- ✅ OpenBao deployed but **reserved** for post-beta
+- ✅ `.env` files acceptable for beta deployments
+- ✅ Manual secret rotation acceptable for beta
+
+### Post-Beta Goals
+
+After beta release, implement:
+- Automatic secret fetching from Infisical at startup (no `.env` files)
+- Secret rotation without gateway restart
+- OpenBao cold vault archival for compliance (5+ year retention)
+- Audit trails for all secret access
+- Provider API key lifecycle management
 
 ---
 
