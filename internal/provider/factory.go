@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"radgateway/internal/provider/gemini"
 )
 
 // AdapterFactory creates provider adapters with appropriate transformers.
@@ -82,13 +84,21 @@ func (f *AdapterFactory) createAnthropicAdapter(config ProviderConfig) AdapterWi
 
 // createGeminiAdapter creates an adapter configured for Google Gemini API.
 func (f *AdapterFactory) createGeminiAdapter(config ProviderConfig) AdapterWithContext {
+	// Create the gemini package adapter with configuration
+	geminiAdapter := gemini.NewAdapter(config.APIKey,
+		gemini.WithBaseURL(config.BaseURL),
+		gemini.WithTimeout(config.Timeout.RequestTimeout),
+	)
+
+	// Create wrapper transformers that implement the provider package interfaces
+	// while delegating to the gemini package implementations
 	reqTransform := &GeminiRequestTransformer{config: config}
-	respTransform := &GeminiResponseTransformer{config: config}
+	respTransform := &GeminiResponseTransformer{config: config, adapter: geminiAdapter}
 
 	adapter := NewExecutableAdapter(config, reqTransform, respTransform)
 
 	if config.StreamingEnabled {
-		adapter.SetStreamTransformer(&GeminiStreamTransformer{})
+		adapter.SetStreamTransformer(&GeminiStreamTransformer{adapter: geminiAdapter})
 	}
 
 	return adapter
@@ -322,8 +332,10 @@ func (t *AnthropicStreamTransformer) IsDoneMarker(chunk []byte) bool {
 // =============================================================================
 
 // GeminiRequestTransformer handles Google Gemini-specific request transformations.
+// It wraps the gemini package's RequestTransformer to implement the provider.RequestTransformer interface.
 type GeminiRequestTransformer struct {
-	config ProviderConfig
+	config    ProviderConfig
+	transform *gemini.RequestTransformer
 }
 
 // TransformHeaders adds Gemini authentication headers.
@@ -429,8 +441,10 @@ func (t *GeminiRequestTransformer) TransformURL(req *http.Request) error {
 }
 
 // GeminiResponseTransformer handles Gemini-specific response transformations.
+// It wraps the gemini package's ResponseTransformer to implement the provider.ResponseTransformer interface.
 type GeminiResponseTransformer struct {
-	config ProviderConfig
+	config  ProviderConfig
+	adapter *gemini.Adapter
 }
 
 // TransformHeaders normalizes Gemini response headers.
@@ -441,7 +455,32 @@ func (t *GeminiResponseTransformer) TransformHeaders(resp *http.Response) error 
 
 // TransformBody converts Gemini response to internal standard format.
 func (t *GeminiResponseTransformer) TransformBody(body io.Reader, contentType string) (io.Reader, string, error) {
-	return body, contentType, nil
+	if body == nil {
+		return body, contentType, nil
+	}
+
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Try to parse and transform Gemini response
+	var geminiResp gemini.GeminiResponse
+	if err := json.Unmarshal(data, &geminiResp); err == nil && len(geminiResp.Candidates) > 0 {
+		// Use the gemini package's transformer
+		transformer := gemini.NewResponseTransformer()
+		result, err := transformer.Transform(geminiResp, t.config.DefaultModel)
+		if err == nil {
+			// Convert to JSON and return
+			output, err := json.Marshal(result)
+			if err == nil {
+				return bytes.NewReader(output), "application/json", nil
+			}
+		}
+	}
+
+	// Fall back to passing through unchanged if transformation fails
+	return bytes.NewReader(data), contentType, nil
 }
 
 // TransformStatusCode normalizes Gemini status codes.
@@ -450,15 +489,49 @@ func (t *GeminiResponseTransformer) TransformStatusCode(code int) int {
 }
 
 // GeminiStreamTransformer handles Gemini SSE streaming transformations.
-type GeminiStreamTransformer struct{}
+// It wraps the gemini package's StreamTransformer to implement the provider.StreamTransformer interface.
+type GeminiStreamTransformer struct {
+	adapter   *gemini.Adapter
+	transform *gemini.StreamTransformer
+	model     string
+}
 
 // TransformStreamChunk processes Gemini SSE chunks.
 func (t *GeminiStreamTransformer) TransformStreamChunk(chunk []byte) ([]byte, error) {
-	return chunk, nil
+	// Initialize transformer on first use
+	if t.transform == nil {
+		t.transform = gemini.NewStreamTransformer()
+		t.transform.Init(t.model)
+	}
+
+	// Extract data prefix if present
+	data := string(chunk)
+	if strings.HasPrefix(data, "data: ") {
+		data = strings.TrimPrefix(data, "data: ")
+	}
+
+	// Skip empty lines and [DONE] markers
+	if data == "" || data == "[DONE]" {
+		return chunk, nil
+	}
+
+	// Transform the chunk using gemini package
+	result, isFinal, err := t.transform.TransformChunk(data)
+	if err != nil {
+		// If transformation fails, pass through unchanged
+		return chunk, nil
+	}
+
+	// The gemini TransformChunk returns already formatted SSE data
+	if isFinal {
+		// Add DONE marker after the result
+		result = append(result, []byte("data: [DONE]\n\n")...)
+	}
+
+	return result, nil
 }
 
 // IsDoneMarker checks for Gemini stream completion.
 func (t *GeminiStreamTransformer) IsDoneMarker(chunk []byte) bool {
-	// Gemini uses a different streaming format
-	return bytes.Contains(chunk, []byte("candidates")) && bytes.Contains(chunk, []byte("finishReason"))
+	return gemini.IsDoneMarker(chunk)
 }
