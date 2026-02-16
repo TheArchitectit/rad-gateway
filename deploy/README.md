@@ -1,6 +1,6 @@
-# RAD Gateway 01 Deployment Automation
+# RAD Gateway Deployment Automation
 
-This directory contains all deployment automation scripts for the RAD Gateway 01 (radgateway01) service.
+This directory contains deployment automation scripts for the RAD Gateway service.
 
 ## Files
 
@@ -19,7 +19,7 @@ This directory contains all deployment automation scripts for the RAD Gateway 01
 | File | Description |
 |------|-------------|
 | `config/env` | Static environment variables |
-| `systemd/radgateway01.service` | Systemd unit file for service management |
+| `systemd/<your-container-name>.service` | Systemd unit file for service management |
 
 ## Quick Start
 
@@ -28,22 +28,22 @@ This directory contains all deployment automation scripts for the RAD Gateway 01
 sudo ./install.sh
 
 # Add your Infisical token
-echo "your-infisical-token" | sudo tee /opt/radgateway01/config/infisical-token
-sudo chmod 600 /opt/radgateway01/config/infisical-token
-sudo chown radgateway:radgateway /opt/radgateway01/config/infisical-token
+echo "your-infisical-token" | sudo tee /opt/<your-container-name>/config/infisical-token
+sudo chmod 600 /opt/<your-container-name>/config/infisical-token
+sudo chown radgateway:radgateway /opt/<your-container-name>/config/infisical-token
 
 # Start the service
-sudo systemctl start radgateway01
+sudo systemctl start <your-container-name>
 
 # Verify
-sudo systemctl status radgateway01
+sudo systemctl status <your-container-name>
 curl http://localhost:8090/health
 ```
 
 ## Directory Structure After Install
 
 ```
-/opt/radgateway01/
+/opt/<your-container-name>/
 ├── bin/
 │   ├── backup.sh          # Backup automation
 │   ├── health-check.sh    # Health check script
@@ -54,27 +54,27 @@ curl http://localhost:8090/health
 ├── data/                  # Podman volume mount
 ├── logs/                  # Application logs
 └── systemd/
-    └── radgateway01.service  # Systemd unit file
+    └── <your-container-name>.service  # Systemd unit file
 ```
 
 ## Management Commands
 
 ```bash
 # Service control
-sudo systemctl start radgateway01
-sudo systemctl stop radgateway01
-sudo systemctl restart radgateway01
-sudo systemctl status radgateway01
+sudo systemctl start <your-container-name>
+sudo systemctl stop <your-container-name>
+sudo systemctl restart <your-container-name>
+sudo systemctl status <your-container-name>
 
 # Logs
-sudo journalctl -u radgateway01 -f
-sudo podman logs radgateway01-app
+sudo journalctl -u <your-container-name> -f
+sudo podman logs <your-container-name>-app
 
 # Health check
-/opt/radgateway01/bin/health-check.sh
+/opt/<your-container-name>/bin/health-check.sh
 
 # Manual backup
-/opt/radgateway01/bin/backup.sh
+/opt/<your-container-name>/bin/backup.sh
 
 # Container management
 sudo podman ps --pod
