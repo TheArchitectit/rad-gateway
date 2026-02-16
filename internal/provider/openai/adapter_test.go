@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -392,7 +393,7 @@ func TestAdapter_ContextCancellation(t *testing.T) {
 }
 
 func TestStreamingResponse_Usage(t *testing.T) {
-	pr, pw := io.Pipe()
+	pr, _ := io.Pipe()
 	defer pr.Close()
 
 	usage := models.Usage{PromptTokens: 10}
@@ -410,6 +411,3 @@ func TestStreamingResponse_Usage(t *testing.T) {
 		t.Errorf("PromptTokens mismatch: got %d", u.PromptTokens)
 	}
 }
-
-// Need to import sync for the test above
-import "sync"

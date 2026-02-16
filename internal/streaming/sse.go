@@ -47,10 +47,14 @@ func (p *Parser) Next() (Event, error) {
 	for {
 		line, err := p.reader.ReadBytes('\n')
 		if err != nil {
-			if errors.Is(err, io.EOF) && p.scratch.Len() > 0 {
+			if errors.Is(err, io.EOF) {
 				// Process remaining data before EOF
-				p.event.Data = p.scratch.String()
-				return p.event, nil
+				if p.scratch.Len() > 0 || p.event.ID != "" || p.event.Event != "" {
+					p.event.Data = p.scratch.String()
+					return p.event, nil
+				}
+				// Empty stream or just whitespace/comments
+				return Event{}, io.EOF
 			}
 			return Event{}, err
 		}
@@ -70,15 +74,26 @@ func (p *Parser) Next() (Event, error) {
 			continue
 		}
 
+		// Skip comment lines
+		if len(line) > 0 && line[0] == ':' {
+			continue
+		}
+
 		// Parse field
 		if err := p.parseField(line); err != nil {
 			return Event{}, err
 		}
+		hasEventFields = true
 	}
 }
 
 // parseField parses a single SSE field line.
 func (p *Parser) parseField(line []byte) error {
+	// Skip comment lines (lines starting with colon)
+	if len(line) > 0 && line[0] == ':' {
+		return nil
+	}
+
 	// Find colon separator
 	colonIdx := bytes.Index(line, []byte(":"))
 

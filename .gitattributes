@@ -1,23 +1,25 @@
 # GitHub Linguist - Language Detection Overrides
 # https://github.com/github-linguist/linguist/blob/master/docs/overrides.md
 
-# Mark Python scripts as generated (helper tools, not core application)
+# Mark Python scripts as generated and exclude from language stats
+# These are helper tools, not core application code
 scripts/*.py linguist-generated=true
-scripts/*.py linguist-language=Python
+scripts/*.py linguist-detectable=false
 
 # Ensure Go files are properly detected
-*.go linguist-language=Go
 *.go linguist-detectable=true
 
-# Mark documentation
+# Mark documentation (excluded from language stats)
 *.md linguist-documentation=true
 
-# Mark deployment configs
+# Mark deployment configs as generated
 deploy/*.sh linguist-generated=true
 .github/**/*.yml linguist-generated=true
 .github/**/*.yaml linguist-generated=true
 
-# Exclude vendor and generated files
+# Exclude vendor and generated files from language stats
 vendor/** linguist-vendored=true
 *.gen.go linguist-generated=true
+*.gen.go linguist-detectable=false
 *.pb.go linguist-generated=true
+*.pb.go linguist-detectable=false

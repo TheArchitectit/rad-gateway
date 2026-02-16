@@ -90,8 +90,8 @@ func DefaultTimeoutConfig() TimeoutConfig {
 	}
 }
 
-// RetryConfig defines retry behavior for failed requests.
-type RetryConfig struct {
+// AdapterRetryConfig defines retry behavior for failed requests.
+type AdapterRetryConfig struct {
 	// MaxRetries is the maximum number of retry attempts.
 	MaxRetries int
 
@@ -111,9 +111,9 @@ type RetryConfig struct {
 	RetryableErrors []string
 }
 
-// DefaultRetryConfig returns sensible default retry configuration.
-func DefaultRetryConfig() RetryConfig {
-	return RetryConfig{
+// DefaultAdapterRetryConfig returns sensible default retry configuration.
+func DefaultAdapterRetryConfig() AdapterRetryConfig {
+	return AdapterRetryConfig{
 		MaxRetries:        3,
 		InitialBackoff:    500 * time.Millisecond,
 		MaxBackoff:        30 * time.Second,
@@ -152,7 +152,7 @@ type ProviderConfig struct {
 	Timeout TimeoutConfig
 
 	// Retry settings for this provider.
-	Retry RetryConfig
+	Retry AdapterRetryConfig
 
 	// Headers are additional headers to include in every request.
 	Headers map[string]string

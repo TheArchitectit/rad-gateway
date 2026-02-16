@@ -1,20 +1,40 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"radgateway/internal/core"
 	"radgateway/internal/models"
+	"radgateway/internal/streaming"
 )
 
+// StreamAdapter defines the interface for streaming-capable adapters.
+// Provider adapters that support streaming should implement this interface.
+type StreamAdapter interface {
+	// ExecuteStream executes a streaming request and returns a ReadCloser with the SSE stream
+	ExecuteStream(ctx context.Context, req models.ProviderRequest, model string) (io.ReadCloser, error)
+}
+
 type Handlers struct {
-	gateway *core.Gateway
+	gateway       *core.Gateway
+	streamHandler *streaming.StreamHandler
 }
 
 func NewHandlers(g *core.Gateway) *Handlers {
-	return &Handlers{gateway: g}
+	h := &Handlers{gateway: g}
+
+	// Initialize stream handler with transformer factory
+	h.streamHandler = streaming.NewStreamHandler(func(provider, model string) *streaming.Transformer {
+		return streaming.NewTransformer(provider, model)
+	})
+
+	return h
 }
 
 func (h *Handlers) Register(mux *http.ServeMux) {
@@ -43,20 +63,108 @@ func (h *Handlers) chatCompletions(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w)
 		return
 	}
+
 	var req models.ChatCompletionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		badRequest(w, err)
 		return
 	}
+
 	if req.Model == "" {
 		req.Model = "gpt-4o-mini"
 	}
+
+	// Check if streaming is requested
+	if req.Stream {
+		h.handleStreamingChatCompletion(w, r, req)
+		return
+	}
+
+	// Non-streaming request
 	out, _, err := h.gateway.Handle(r.Context(), "chat", req.Model, req)
 	if err != nil {
 		upstreamError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, out.Payload)
+}
+
+// handleStreamingChatCompletion handles streaming chat completion requests.
+func (h *Handlers) handleStreamingChatCompletion(w http.ResponseWriter, r *http.Request, req models.ChatCompletionRequest) {
+	// For now, we'll simulate streaming with a mock response
+	// In production, this would connect to the provider's streaming endpoint
+
+	provider := h.detectProvider(req.Model)
+	stream, err := h.streamHandler.HandleStream(w, r, provider, req.Model)
+	if err != nil {
+		// Error already sent to client by HandleStream
+		return
+	}
+
+	// Create a mock stream for demonstration
+	// In production, this would come from the provider adapter
+	mockStream := h.createMockStream(req.Model)
+
+	// Start streaming from the mock provider
+	stream.StartFromReader(mockStream)
+
+	// Wait for completion
+	if err := stream.Wait(); err != nil {
+		// Log error - the stream is already handling client communication
+		fmt.Printf("streaming error: %v\n", err)
+	}
+}
+
+// createMockStream creates a mock SSE stream for demonstration.
+// In production, this would come from the provider adapter.
+func (h *Handlers) createMockStream(model string) io.ReadCloser {
+	pr, pw := io.Pipe()
+
+	go func() {
+		defer pw.Close()
+
+		// Simulate streaming chunks
+		chunks := []string{
+			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"` + model + `","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
+			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"` + model + `","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}`,
+			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"` + model + `","choices":[{"index":0,"delta":{"content":"!"},"finish_reason":null}]}`,
+			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"` + model + `","choices":[{"index":0,"delta":{"content":" How"},"finish_reason":null}]}`,
+			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"` + model + `","choices":[{"index":0,"delta":{"content":" can"},"finish_reason":null}]}`,
+			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"` + model + `","choices":[{"index":0,"delta":{"content":" I"},"finish_reason":null}]}`,
+			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"` + model + `","choices":[{"index":0,"delta":{"content":" help"},"finish_reason":null}]}`,
+			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"` + model + `","choices":[{"index":0,"delta":{"content":" you"},"finish_reason":null}]}`,
+			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"` + model + `","choices":[{"index":0,"delta":{"content":"?"},"finish_reason":null}]}`,
+			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"` + model + `","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+		}
+
+		for _, chunk := range chunks {
+			// SSE format: data: {...}\n\n
+			_, err := fmt.Fprintf(pw, "data: %s\n\n", chunk)
+			if err != nil {
+				return
+			}
+			// Small delay to simulate real streaming
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		// Send [DONE] marker
+		fmt.Fprint(pw, "data: [DONE]\n\n")
+	}()
+
+	return pr
+}
+
+// detectProvider determines the provider from the model name.
+func (h *Handlers) detectProvider(model string) string {
+	modelLower := strings.ToLower(model)
+	switch {
+	case strings.HasPrefix(modelLower, "claude"):
+		return "anthropic"
+	case strings.HasPrefix(modelLower, "gemini"):
+		return "gemini"
+	default:
+		return "openai"
+	}
 }
 
 func (h *Handlers) responses(w http.ResponseWriter, r *http.Request) {

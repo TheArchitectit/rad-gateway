@@ -1,36 +1,42 @@
 # RAD Gateway (Brass Relay)
 
-Go-based API gateway scaffold inspired by Plexus and AxonHub feature patterns.
+[![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+Production-ready Go API gateway providing unified OpenAI-compatible access to multiple AI providers (OpenAI, Anthropic, Google Gemini).
 
 ## Status
 
-`Alpha` - **radgateway01 Successfully Deployed**
+`Alpha` - **Successfully Deployed**
 
-The first production instance (radgateway01) has been deployed with:
-- Containerized deployment via Podman
-- Systemd service management
+RAD Gateway is deployed with:
+- Containerized deployment via Docker/Podman
+- Systemd service management (optional)
 - Infisical secrets integration
 - Health monitoring enabled
 
-## Quick Start
+## Quick Start (Docker/Podman)
 
 ```bash
-# Clone and build
+# Clone repository
 git clone <repository-url>
 cd rad-gateway
-go build -o rad-gateway ./cmd/rad-gateway
 
-# Configure (create .env file)
-echo "RAD_API_KEYS=your-api-key" > .env
+# Build container image
+podman build -t rad-gateway:latest .
 
-# Run
-./rad-gateway
+# Run with environment variables
+podman run -d \
+  --name rad-gateway \
+  -p 8090:8090 \
+  -e RAD_API_KEYS=your-api-key \
+  rad-gateway:latest
 
 # Verify
 curl http://localhost:8090/health
 ```
 
-See [docs/getting-started.md](docs/getting-started.md) for detailed setup instructions.
+See [docs/getting-started.md](docs/getting-started.md) for detailed deployment options including systemd service configuration and Infisical secrets management.
 
 ## Project Goal
 
@@ -43,10 +49,21 @@ Current goals:
 - keep operations simple with lightweight management endpoints and explicit `.env`-based secret handling
 - add agent interoperability in the next phase (A2A + AG-UI, with scoped MCP integration)
 
-## Run
+## Development
+
+For local development (requires Go 1.24+):
 
 ```bash
-go run ./cmd/rad-gateway
+# Clone and build
+git clone <repository-url>
+cd rad-gateway
+go build -o rad-gateway ./cmd/rad-gateway
+
+# Configure (create .env file)
+echo "RAD_API_KEYS=your-api-key" > .env
+
+# Run
+./rad-gateway
 ```
 
 Server listens on `:8090` by default.
@@ -90,54 +107,44 @@ Planned (next phase):
 - `POST /a2a/tasks/{taskId}/cancel`
 - `GET /v1/agents/{agentId}/stream`
 
-## Docs
+## Deployment
 
-### Getting Started
-- `docs/getting-started.md` - Quick start and deployment guide
+### Production Deploy (Recommended)
 
-### Product & Planning
-- `docs/feature-matrix.md`
-- `docs/reverse-engineering-report.md`
-- `docs/product-build-blueprint.md`
-- `docs/product-theme.md`
-- `docs/implementation-plan.md`
-- `docs/next-milestones.md`
+For production deployments with systemd and Infisical secrets management:
 
-### Operations
-- `docs/operations/deployment-targets.md`
-- `docs/operations/deployment-radgateway01.md` - Production deployment spec
+```bash
+cd deploy
+sudo ./install.sh
+```
 
-### Team
-- `docs/team-structure-compliance.md` - Team organization (TEAM-007)
-- `docs/team-system-guide.md` - Team management commands
-- `docs/review-teams.md`
+See [deploy/README.md](deploy/README.md) for detailed production deployment instructions.
 
-### Technical
-- `docs/protocol-stack-decision.md`
+### Quick Deploy (Docker/Podman)
 
-## Team Structure (TEAM-007 Compliant)
+```bash
+# Build container image
+podman build -t rad-gateway:latest .
 
-All teams have 4-6 members. Teams are spun up/down as needed using Claude Code Team system.
+# Run with environment variables
+podman run -d \
+  --name rad-gateway \
+  -p 8090:8090 \
+  -e RAD_API_KEYS=your-api-key \
+  rad-gateway:latest
+```
 
-| Team | Purpose | Members | Status |
-|------|---------|---------|--------|
-| Team Alpha | Architecture & Design | 6 | 🟢 Active |
-| Team Bravo | Core Implementation | 6 | 🟢 Active |
-| Team Charlie | Security Hardening | 5 | 🟢 Active |
-| Team Delta | Quality Assurance | 5 | 🟢 Active |
-| Team Echo | Operations & Observability | 5 | 🟢 Active |
-| Team Foxtrot | Inspiration Analysis | 5 | ✅ Complete |
-| Team Golf | Documentation & Design | 6 | 🟢 Active |
-| **Team Hotel** | **Deployment & Infrastructure** | **5** | **🟢 Active (radgateway01)** |
+## Documentation
 
-### Active Team Hotel Members
+- [docs/getting-started.md](docs/getting-started.md) - Deployment guide
+- [docs/feature-matrix.md](docs/feature-matrix.md) - Supported features
+- [docs/implementation-plan.md](docs/implementation-plan.md) - Roadmap
+- [SECURITY.md](SECURITY.md) - Security policy
 
-| Member | Role | Task |
-|--------|------|------|
-| devops-lead | DevOps Lead | Verify deployment |
-| container-engineer | Container Engineer | Verify containers |
-| deployment-engineer | Deployment Engineer | Review scripts |
-| infrastructure-architect | Infrastructure Architect | Validate infrastructure |
-| systems-administrator | Systems Administrator | Check system health |
+## Contributing
 
-See `docs/team-system-guide.md` for team management commands.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
+
+## License
+
+See LICENSE file for details.

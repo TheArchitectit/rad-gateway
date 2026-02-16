@@ -1,9 +1,10 @@
 # RAD Gateway Deployment Specification
 
-**Container Group**: radgateway01
+**Container Group**: `<your-container-name>`
 **Primary Port**: 8090
 **Status**: Alpha Single-Node Deployment
-**Team**: Team Hotel (Deployment & Infrastructure)
+
+This specification defines a production-ready deployment of RAD Gateway using Podman/Docker containers with optional systemd integration.
 
 ## Overview
 
@@ -19,10 +20,10 @@ This specification defines a production-ready deployment of RAD Gateway using Po
 │  OS: RHEL/Ubuntu with Podman/Docker                         │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │  Container Pod: radgateway01                        │   │
+│  │  Container Pod: <your-container-name>                        │   │
 │  │                                                     │   │
 │  │  ┌──────────────┐  ┌──────────────┐                │   │
-│  │  │ radgateway01 │  │radgateway01- │                │   │
+│  │  │ <your-container-name> │  │<your-container-name>- │                │   │
 │  │  │   -app       │  │  postgres    │ (future)       │   │
 │  │  │   :8090      │  │   :5432      │                │   │
 │  │  └──────────────┘  └──────────────┘                │   │
@@ -49,37 +50,37 @@ External Access:
 
 ## Container Group Definition
 
-### radgateway01 Pod
+### <your-container-name> Pod
 
 ```bash
 # Pod creation
 sudo podman pod create \
-  --name radgateway01 \
+  --name <your-container-name> \
   --publish 8090:8090 \
   --network bridge \
-  --infra-name radgateway01-infra
+  --infra-name <your-container-name>-infra
 ```
 
 ### Containers
 
-#### 1. radgateway01-app (Main Application)
+#### 1. <your-container-name>-app (Main Application)
 
 ```bash
 # Build image first
-sudo podman build -t radgateway01:latest .
+sudo podman build -t <your-container-name>:latest .
 
 # Create container
 sudo podman run -d \
-  --pod radgateway01 \
-  --name radgateway01-app \
+  --pod <your-container-name> \
+  --name <your-container-name>-app \
   --restart unless-stopped \
-  --env-file /opt/radgateway01/config/env \
-  --volume radgateway01-data:/data \
+  --env-file /opt/<your-container-name>/config/env \
+  --volume <your-container-name>-data:/data \
   --health-cmd "curl -f http://localhost:8090/health || exit 1" \
   --health-interval 30s \
   --health-timeout 10s \
   --health-retries 3 \
-  localhost/radgateway01:latest
+  localhost/<your-container-name>:latest
 ```
 
 **Environment Variables**:
@@ -101,18 +102,18 @@ INFISICAL_WORKSPACE_ID=<your-workspace-id>
 # GEMINI_API_KEY
 ```
 
-#### 2. radgateway01-postgres (Future - Phase 2)
+#### 2. <your-container-name>-postgres (Future - Phase 2)
 
 ```bash
 # For usage/trace persistence (Milestone 2)
 sudo podman run -d \
-  --pod radgateway01 \
-  --name radgateway01-postgres \
+  --pod <your-container-name> \
+  --name <your-container-name>-postgres \
   --restart unless-stopped \
   --env POSTGRES_USER=radgateway \
   --env POSTGRES_PASSWORD_FILE=/run/secrets/db-password \
   --env POSTGRES_DB=radgateway \
-  --volume radgateway01-postgres-data:/var/lib/postgresql/data \
+  --volume <your-container-name>-postgres-data:/var/lib/postgresql/data \
   docker.io/library/postgres:16-alpine
 ```
 
@@ -120,13 +121,13 @@ sudo podman run -d \
 
 ## Startup Script with Infisical Integration
 
-### /opt/radgateway01/bin/startup.sh
+### /opt/<your-container-name>/bin/startup.sh
 
 ```bash
 #!/bin/bash
 set -e
 
-echo "[radgateway01] Starting up..."
+echo "[<your-container-name>] Starting up..."
 
 # Infisical configuration - UPDATE THESE VALUES
 INFISICAL_URL="http://localhost:8080"
@@ -134,7 +135,7 @@ INFISICAL_TOKEN="${INFISICAL_SERVICE_TOKEN%.*}"
 WORKSPACE_ID="<your-workspace-id>"
 
 # Fetch secrets from Infisical
-echo "[radgateway01] Fetching secrets from Infisical..."
+echo "[<your-container-name>] Fetching secrets from Infisical..."
 
 # Get RAD_API_KEYS
 RAD_API_KEYS=$(curl -s \
@@ -165,7 +166,7 @@ export ANTHROPIC_API_KEY
 export GEMINI_API_KEY
 
 # Start application
-echo "[radgateway01] Starting rad-gateway..."
+echo "[<your-container-name>] Starting rad-gateway..."
 exec /usr/local/bin/rad-gateway
 ```
 
@@ -174,7 +175,7 @@ exec /usr/local/bin/rad-gateway
 ## Directory Structure
 
 ```
-/opt/radgateway01/
+/opt/<your-container-name>/
 ├── bin/
 │   ├── startup.sh              # Infisical integration + startup
 │   ├── health-check.sh         # Health check script
@@ -186,14 +187,14 @@ exec /usr/local/bin/rad-gateway
 │   └── usage/                  # Usage logs
 ├── logs/                       # Log directory
 └── systemd/
-    └── radgateway01.service    # Systemd unit file
+    └── <your-container-name>.service    # Systemd unit file
 ```
 
 ---
 
 ## Systemd Service
 
-### /etc/systemd/system/radgateway01.service
+### /etc/systemd/system/<your-container-name>.service
 
 ```ini
 [Unit]
@@ -206,25 +207,25 @@ After=infisical.service network.target
 Type=simple
 User=radgateway
 Group=radgateway
-WorkingDirectory=/opt/radgateway01
+WorkingDirectory=/opt/<your-container-name>
 
 # Environment
-Environment="INFISICAL_SERVICE_TOKEN_FILE=/opt/radgateway01/config/infisical-token"
+Environment="INFISICAL_SERVICE_TOKEN_FILE=/opt/<your-container-name>/config/infisical-token"
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 
 # Startup
-ExecStartPre=-/usr/bin/podman pull localhost/radgateway01:latest
+ExecStartPre=-/usr/bin/podman pull localhost/<your-container-name>:latest
 ExecStart=/usr/bin/podman run \
-    --pod radgateway01 \
-    --name radgateway01-app \
+    --pod <your-container-name> \
+    --name <your-container-name>-app \
     --rm \
-    --env-file /opt/radgateway01/config/env \
-    --volume radgateway01-data:/data \
-    localhost/radgateway01:latest
+    --env-file /opt/<your-container-name>/config/env \
+    --volume <your-container-name>-data:/data \
+    localhost/<your-container-name>:latest
 
 # Stop
-ExecStop=/usr/bin/podman stop -t 30 radgateway01-app
-ExecStopPost=-/usr/bin/podman rm radgateway01-app
+ExecStop=/usr/bin/podman stop -t 30 <your-container-name>-app
+ExecStopPost=-/usr/bin/podman rm <your-container-name>-app
 
 # Restart
 Restart=always
@@ -234,7 +235,7 @@ RestartSec=10
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/radgateway01/data
+ReadWritePaths=/opt/<your-container-name>/data
 
 [Install]
 WantedBy=multi-user.target
@@ -248,7 +249,7 @@ WantedBy=multi-user.target
 
 | Port | Service | External Access |
 |------|---------|-----------------|
-| 8090 | radgateway01-app | Yes - Primary API |
+| 8090 | <your-container-name>-app | Yes - Primary API |
 | 8080 | Infisical | Internal only |
 | 5433 | Infisical Postgres | Internal only |
 | 6380 | Infisical Redis | Internal only |
@@ -256,7 +257,7 @@ WantedBy=multi-user.target
 ### Firewall Rules
 
 ```bash
-# Allow radgateway01 port
+# Allow <your-container-name> port
 sudo firewall-cmd --permanent --add-port=8090/tcp
 sudo firewall-cmd --reload
 ```
@@ -283,14 +284,14 @@ sudo podman pod ps
 sudo podman ps --pod
 
 # Check logs
-sudo podman logs radgateway01-app
+sudo podman logs <your-container-name>-app
 ```
 
 ### Systemd Status
 
 ```bash
-sudo systemctl status radgateway01
-sudo journalctl -u radgateway01 -f
+sudo systemctl status <your-container-name>
+sudo journalctl -u <your-container-name> -f
 ```
 
 ---
@@ -301,31 +302,31 @@ sudo journalctl -u radgateway01 -f
 
 ```bash
 #!/bin/bash
-# /opt/radgateway01/bin/backup.sh
+# /opt/<your-container-name>/bin/backup.sh
 
-BACKUP_DIR="/backup/radgateway01"
+BACKUP_DIR="/backup/<your-container-name>"
 DATE=$(date +%Y%m%d_%H%M%S)
 
 # Create backup
 mkdir -p "${BACKUP_DIR}/${DATE}"
 
 # Backup usage data
-cp -r /opt/radgateway01/data/* "${BACKUP_DIR}/${DATE}/"
+cp -r /opt/<your-container-name>/data/* "${BACKUP_DIR}/${DATE}/"
 
 # Backup config
-cp /opt/radgateway01/config/* "${BACKUP_DIR}/${DATE}/"
+cp /opt/<your-container-name>/config/* "${BACKUP_DIR}/${DATE}/"
 
 # Cleanup old backups (keep 7 days)
 find "${BACKUP_DIR}" -type d -mtime +7 -exec rm -rf {} + 2>/dev/null
 
-echo "[radgateway01] Backup completed: ${BACKUP_DIR}/${DATE}"
+echo "[<your-container-name>] Backup completed: ${BACKUP_DIR}/${DATE}"
 ```
 
 ### Recovery Procedure
 
-1. Stop service: `sudo systemctl stop radgateway01`
+1. Stop service: `sudo systemctl stop <your-container-name>`
 2. Restore data from backup
-3. Restart service: `sudo systemctl start radgateway01`
+3. Restart service: `sudo systemctl start <your-container-name>`
 
 ---
 
@@ -336,7 +337,7 @@ echo "[radgateway01] Backup completed: ${BACKUP_DIR}/${DATE}"
 ```yaml
 # prometheus.yml addition
 scrape_configs:
-  - job_name: 'radgateway01'
+  - job_name: '<your-container-name>'
     static_configs:
       - targets: ['localhost:8090']
     metrics_path: /metrics
@@ -355,14 +356,14 @@ scrape_configs:
 
 1. Build new image:
    ```bash
-   sudo podman build -t radgateway01:v0.2.0 .
+   sudo podman build -t <your-container-name>:v0.2.0 .
    ```
 
 2. Rolling update:
    ```bash
-   sudo systemctl stop radgateway01
-   sudo podman tag radgateway01:v0.2.0 radgateway01:latest
-   sudo systemctl start radgateway01
+   sudo systemctl stop <your-container-name>
+   sudo podman tag <your-container-name>:v0.2.0 <your-container-name>:latest
+   sudo systemctl start <your-container-name>
    ```
 
 3. Verify:
@@ -384,7 +385,7 @@ curl http://localhost:8080/api/status
 sudo systemctl status infisical
 ```
 
-**Fix**: Ensure Infisical is running before starting radgateway01
+**Fix**: Ensure Infisical is running before starting <your-container-name>
 
 ### Issue: Port 8090 already in use
 
@@ -400,8 +401,8 @@ sudo podman ps | grep 8090
 
 **Fix**:
 ```bash
-sudo chown -R radgateway:radgateway /opt/radgateway01/data
-sudo chmod 750 /opt/radgateway01/data
+sudo chown -R radgateway:radgateway /opt/<your-container-name>/data
+sudo chmod 750 /opt/<your-container-name>/data
 ```
 
 ---
