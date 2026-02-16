@@ -16,8 +16,17 @@ dist/
 .vscode/
 # Internal deployment docs (private network details)
 docs/operations/network-troubleshooting.md
+docs/operations/deployment-radgateway01.md
 DEPLOYMENT-REPORT.md
+DEPLOYMENT_CHECKLIST.md
+RELEASE_NOTES.md
 RUNBOOK.md
+docs/container/team-hotel-accomplishments.md
+deploy/test-backup-restore.sh
 scripts/
 /opt/
+*.token
+*.key
+*.pem
+secrets/
 
