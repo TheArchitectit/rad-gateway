@@ -37,6 +37,8 @@
 | Load tests | ⏸️ **SKIP** | ✅ Required | Minimal load for beta |
 | Chaos engineering | ⏸️ **SKIP** | ✅ Required | Not needed for beta |
 | Penetration testing | ⏸️ **SKIP** | ✅ Required | Security review OK for beta |
+| Pre-deployment validation | ⏸️ **SKIP** | ✅ Required | Manual checks OK for beta |
+| Health integration tests | ⏸️ **SKIP** | ✅ Required | Basic health checks OK for beta |
 | **Documentation** ||||
 | Runbooks | ✅ Required | ✅ Required | Incident procedures |
 | Post-mortem process | ⚠️ Basic | ✅ Required | Learn from incidents |
@@ -56,7 +58,11 @@
 
 ## Detailed Rationale
 
-### Can SKIP for Beta (8 items)
+### Can SKIP for Beta (15 items)
+
+**Note**: P1 items from Team India review can be deferred to production phase for beta.
+
+**P1 QA items can be deferred to production** - The following pre-deployment validation and health check integration tests are production requirements but can be skipped for beta deployment.
 
 1. **Firewall Rules** ⏸️
    - Beta: Internal network only, firewall not required
@@ -97,6 +103,36 @@
    - Beta: Functional testing sufficient
    - Production: Must validate capacity
    - Risk: Unknown performance limits
+
+9. **Token File Backup Exclusion Documentation** ⏸️ *[P1 - Team India]*
+   - Beta: Basic exclusion note sufficient
+   - Production: Full security audit of backup exclusions
+   - Risk: Low (token is short-lived bootstrap credential)
+
+10. **Startup Script Error Handling** ⏸️ *[P1 - Team India]*
+    - Beta: Basic error handling with exit codes
+    - Production: Comprehensive error handling with retries and alerting
+    - Risk: Medium (service may fail silently)
+
+11. **Advanced Monitoring/Alerting** ⏸️ *[P1 - Team India]*
+    - Beta: Basic health checks and manual monitoring OK
+    - Production: Automated alerting with PagerDuty/Opsgenie integration
+    - Risk: Low (manual monitoring sufficient for beta)
+
+12. **Production-Grade Deployment/Rollback** ⏸️ *[P1 - Team India]*
+    - Beta: Simple binary swap rollback OK
+    - Production: Blue/green deployment with automated canary analysis
+    - Risk: Low (beta can tolerate brief downtime)
+
+13. **Pre-Deployment Validation Script** ⏸️ *[P1 QA - Team India]*
+    - Beta: Manual deployment checks OK
+    - Production: Automated pre-deployment validation required
+    - Risk: Low (manual verification sufficient for beta)
+
+14. **Health Check Integration Tests** ⏸️ *[P1 QA - Team India]*
+    - Beta: Basic health endpoint verification OK
+    - Production: Comprehensive integration test suite required
+    - Risk: Low (manual health checks sufficient for beta)
 
 ### Must Have Even for Beta (6 items)
 
