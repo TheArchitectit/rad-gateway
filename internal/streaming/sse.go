@@ -270,10 +270,19 @@ func (w *Writer) IsClosed() bool {
 }
 
 // escapeField escapes special characters in SSE field values.
-// Lines starting with certain characters need special handling.
+// Per the SSE spec, newlines in field values should be handled by
+// splitting data across multiple "data:" lines. This function handles
+// escaping for ID and event type fields which cannot contain newlines.
+// If a newline is found, it is replaced with a space to maintain
+// protocol integrity while preserving the value.
 func escapeField(s string) string {
-	// SSE doesn't require escaping per se, but we need to handle
-	// lines that start with colon to distinguish from comments
+	// Replace newlines and carriage returns with spaces
+	// to prevent breaking the SSE protocol structure.
+	// Note: For multiline content, use the data field which is
+	// handled separately in WriteEvent by splitting on newlines.
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
 	return s
 }
 
