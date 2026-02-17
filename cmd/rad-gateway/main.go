@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"net/http"
 	"time"
 
@@ -9,6 +8,7 @@ import (
 	"radgateway/internal/api"
 	"radgateway/internal/config"
 	"radgateway/internal/core"
+	"radgateway/internal/logger"
 	"radgateway/internal/middleware"
 	"radgateway/internal/provider"
 	"radgateway/internal/routing"
@@ -17,6 +17,10 @@ import (
 )
 
 func main() {
+	// Initialize structured logger first
+	logger.Init(logger.DefaultConfig())
+	log := logger.WithComponent("main")
+
 	cfg := config.Load()
 
 	usageSink := usage.NewInMemory(2000)
@@ -43,7 +47,7 @@ func main() {
 	protectedMux := withConditionalAuth(apiMux, auth)
 	handler := middleware.WithRequestContext(protectedMux)
 
-	log.Printf("rad-gateway listening on %s", cfg.ListenAddr)
+	log.Info("rad-gateway starting", "addr", cfg.ListenAddr)
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           handler,
@@ -54,7 +58,8 @@ func main() {
 	}
 
 	if err := server.ListenAndServe(); err != nil {
-		log.Fatal(err)
+		log.Error("server failed to start", "error", err.Error())
+		return
 	}
 }
 

@@ -4,6 +4,9 @@ import (
 	"context"
 	"time"
 
+	"log/slog"
+
+	"radgateway/internal/logger"
 	"radgateway/internal/middleware"
 	"radgateway/internal/models"
 	"radgateway/internal/routing"
@@ -15,10 +18,16 @@ type Gateway struct {
 	router *routing.Router
 	usage  usage.Sink
 	trace  *trace.Store
+	log    *slog.Logger
 }
 
 func New(router *routing.Router, usageSink usage.Sink, traceStore *trace.Store) *Gateway {
-	return &Gateway{router: router, usage: usageSink, trace: traceStore}
+	return &Gateway{
+		router: router,
+		usage:  usageSink,
+		trace:  traceStore,
+		log:    logger.WithComponent("gateway"),
+	}
 }
 
 func (g *Gateway) Handle(ctx context.Context, apiType string, model string, payload any) (models.ProviderResult, []routing.Attempt, error) {
