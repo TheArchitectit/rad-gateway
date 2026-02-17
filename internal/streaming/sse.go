@@ -63,7 +63,7 @@ func (p *Parser) Next() (Event, error) {
 				// Empty stream or just whitespace/comments
 				return Event{}, io.EOF
 			}
-			p.logger.Error("read error from SSE stream", err)
+			p.logger.Error("read error from SSE stream", "error", err)
 			return Event{}, err
 		}
 
@@ -90,7 +90,7 @@ func (p *Parser) Next() (Event, error) {
 
 		// Parse field
 		if err := p.parseField(line); err != nil {
-			p.logger.Error("parse field error", err, "line", string(line))
+			p.logger.Error("parse field error", "error", err, "line", string(line))
 			return Event{}, err
 		}
 		hasFields = true
@@ -220,7 +220,7 @@ func (w *Writer) WriteEvent(event Event) error {
 
 	_, err := w.w.Write([]byte(buf.String()))
 	if err != nil {
-		w.logger.Error("write event error", err, "event_id", event.ID, "event_type", event.Event)
+		w.logger.Error("write event error", "error", err, "event_id", event.ID, "event_type", event.Event)
 		return fmt.Errorf("write event: %w", err)
 	}
 
@@ -327,7 +327,7 @@ func (c *Client) Send(event Event) error {
 		return c.ctx.Err()
 	default:
 		if err := c.writer.WriteEvent(event); err != nil {
-			c.logger.Error("send event failed", err, "event_id", event.ID)
+			c.logger.Error("send event failed", "error", err, "event_id", event.ID)
 			return err
 		}
 		return nil
@@ -351,7 +351,7 @@ func (c *Client) Close() error {
 	close(c.done)
 	err := c.writer.Close()
 	if err != nil {
-		c.logger.Error("error closing writer", err)
+		c.logger.Error("error closing writer", "error", err)
 	}
 	c.logger.Debug("SSE client connection closed")
 	return err

@@ -120,7 +120,7 @@ func (p *Pipe) run() {
 
 			// Try to send to output with backpressure handling
 			if err := p.sendWithBackpressure(chunk); err != nil {
-				p.logger.Error("pipe backpressure error", err, "chunk_id", chunk.ID)
+				p.logger.Error("pipe backpressure error", "error", err, "chunk_id", chunk.ID)
 				p.sendError(err)
 				return
 			}
@@ -250,7 +250,7 @@ func (s *Stream) StartFromReader(reader io.Reader) {
 					s.logger.Debug("stream reader reached EOF", "events_parsed", eventCount)
 					return
 				}
-				s.logger.Error("parse error in stream", err, "events_parsed", eventCount)
+				s.logger.Error("parse error in stream", "error", err, "events_parsed", eventCount)
 				s.setError(fmt.Errorf("parse error: %w", err))
 				return
 			}
@@ -260,7 +260,7 @@ func (s *Stream) StartFromReader(reader io.Reader) {
 
 			chunk, err := s.transformer.Transform(event)
 			if err != nil {
-				s.logger.Error("transform error in stream", err, "event_id", event.ID)
+				s.logger.Error("transform error in stream", "error", err, "event_id", event.ID)
 				s.setError(fmt.Errorf("transform error: %w", err))
 				return
 			}
@@ -293,14 +293,14 @@ func (s *Stream) StartFromReader(reader io.Reader) {
 
 				chunkCount++
 				if err := s.sendChunk(chunk); err != nil {
-					s.logger.Error("send chunk error", err, "chunk_id", chunk.ID, "chunks_sent", chunkCount)
+					s.logger.Error("send chunk error", "error", err, "chunk_id", chunk.ID, "chunks_sent", chunkCount)
 					s.setError(fmt.Errorf("send error: %w", err))
 					return
 				}
 				s.logger.Debug("chunk sent to client", "chunk_id", chunk.ID, "chunks_sent", chunkCount)
 
 			case err := <-s.pipe.Errors:
-				s.logger.Error("pipe error received", err, "chunks_sent", chunkCount)
+				s.logger.Error("pipe error received", "error", err, "chunks_sent", chunkCount)
 				s.setError(err)
 				return
 
@@ -393,7 +393,7 @@ func (s *Stream) Close() error {
 	s.wg.Wait()
 	err := s.client.Close()
 	if err != nil {
-		s.logger.Error("error closing client", err)
+		s.logger.Error("error closing client", "error", err)
 	}
 	s.logger.Debug("stream closed")
 	return err
@@ -442,7 +442,7 @@ func (h *StreamHandler) HandleStream(w http.ResponseWriter, r *http.Request, pro
 	client, err := NewClient(w, r)
 	if err != nil {
 		h.activeStreams.Add(-1)
-		log.Error("failed to create client", err)
+		log.Error("failed to create client", "error", err)
 		return nil, fmt.Errorf("create client: %w", err)
 	}
 
