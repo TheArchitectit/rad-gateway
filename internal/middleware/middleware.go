@@ -6,6 +6,10 @@ import (
 	"encoding/hex"
 	"net/http"
 	"strings"
+
+	"log/slog"
+
+	"radgateway/internal/logger"
 )
 
 type ctxKey string
@@ -19,6 +23,7 @@ const (
 
 type Authenticator struct {
 	keys map[string]string
+	log  *slog.Logger
 }
 
 func NewAuthenticator(keys map[string]string) *Authenticator {
@@ -26,13 +31,17 @@ func NewAuthenticator(keys map[string]string) *Authenticator {
 	for k, v := range keys {
 		copyMap[k] = v
 	}
-	return &Authenticator{keys: copyMap}
+	return &Authenticator{
+		keys: copyMap,
+		log:  logger.WithComponent("middleware"),
+	}
 }
 
 func (a *Authenticator) Require(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		secret := extractAPIKey(r)
 		if secret == "" {
+			a.log.Warn("authentication failed: missing api key", "path", r.URL.Path, "remote_addr", r.RemoteAddr)
 			http.Error(w, `{"error":{"message":"missing api key","code":401}}`, http.StatusUnauthorized)
 			return
 		}
@@ -45,9 +54,12 @@ func (a *Authenticator) Require(next http.Handler) http.Handler {
 			}
 		}
 		if name == "" {
+			a.log.Warn("authentication failed: invalid api key", "path", r.URL.Path, "remote_addr", r.RemoteAddr)
 			http.Error(w, `{"error":{"message":"invalid api key","code":401}}`, http.StatusUnauthorized)
 			return
 		}
+
+		a.log.Debug("authentication successful", "api_key_name", name, "path", r.URL.Path)
 
 		ctx := context.WithValue(r.Context(), KeyAPIKey, secret)
 		ctx = context.WithValue(ctx, KeyAPIName, name)
@@ -56,6 +68,7 @@ func (a *Authenticator) Require(next http.Handler) http.Handler {
 }
 
 func WithRequestContext(next http.Handler) http.Handler {
+	log := logger.WithComponent("middleware")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reqID := r.Header.Get("X-Request-Id")
 		if reqID == "" {
@@ -71,6 +84,8 @@ func WithRequestContext(next http.Handler) http.Handler {
 
 		w.Header().Set("X-Request-Id", reqID)
 		w.Header().Set("X-Trace-Id", traceID)
+
+		log.Debug("request context initialized", "request_id", reqID, "trace_id", traceID, "path", r.URL.Path, "method", r.Method)
 
 		ctx := context.WithValue(r.Context(), KeyRequestID, reqID)
 		ctx = context.WithValue(ctx, KeyTraceID, traceID)
