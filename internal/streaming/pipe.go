@@ -6,9 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"sync"
 	"sync/atomic"
+
+	"radgateway/internal/logger"
 )
 
 // Pipe represents a bidirectional streaming pipe that connects a provider
@@ -30,6 +33,7 @@ type Pipe struct {
 	cancel context.CancelFunc
 	mu     sync.RWMutex
 	closed atomic.Bool
+	logger *slog.Logger
 
 	// buffer for handling backpressure
 	buffer     []*Chunk
@@ -69,7 +73,10 @@ func NewPipe(cfg PipeConfig) *Pipe {
 		ctx:       ctx,
 		cancel:    cancel,
 		maxBuffer: cfg.BufferSize,
+		logger:    logger.WithComponent("streaming"),
 	}
+
+	p.logger.Debug("pipe created", "buffer_size", cfg.BufferSize)
 
 	// Start the pipe relay
 	go p.run()
@@ -84,17 +91,24 @@ func (p *Pipe) run() {
 	defer close(p.Output)
 	defer close(p.Errors)
 
+	p.logger.Debug("pipe relay started")
+	chunkCount := 0
+
 	for {
 		select {
 		case <-p.ctx.Done():
+			p.logger.Debug("pipe context cancelled, draining buffer", "chunks_processed", chunkCount)
 			// Drain remaining chunks
 			p.drainBuffer()
+			p.logger.Debug("pipe relay stopped")
 			return
 
 		case chunk, ok := <-p.Input:
 			if !ok {
+				p.logger.Debug("pipe input closed, draining buffer", "chunks_processed", chunkCount)
 				// Input closed, drain buffer and exit
 				p.drainBuffer()
+				p.logger.Debug("pipe relay stopped")
 				return
 			}
 
@@ -102,8 +116,11 @@ func (p *Pipe) run() {
 				continue
 			}
 
+			chunkCount++
+
 			// Try to send to output with backpressure handling
 			if err := p.sendWithBackpressure(chunk); err != nil {
+				p.logger.Error("pipe backpressure error", err, "chunk_id", chunk.ID)
 				p.sendError(err)
 				return
 			}
@@ -130,14 +147,17 @@ bufferCurrent:
 	// Try to send current chunk
 	select {
 	case p.Output <- chunk:
+		p.logger.Debug("chunk sent to output", "chunk_id", chunk.ID, "buffer_pending", len(p.buffer))
 		return nil
 	default:
 		// Buffer is full, add to internal buffer if space allows
 		if len(p.buffer) < p.maxBuffer {
 			p.buffer = append(p.buffer, chunk)
+			p.logger.Debug("chunk buffered", "chunk_id", chunk.ID, "buffer_size", len(p.buffer))
 			return nil
 		}
 		// Buffer overflow - drop oldest chunk
+		p.logger.Warn("pipe buffer overflow, dropping oldest chunk", "chunk_id", chunk.ID, "buffer_size", len(p.buffer))
 		p.buffer = append(p.buffer[1:], chunk)
 		return fmt.Errorf("pipe buffer overflow: dropped oldest chunk")
 	}
@@ -167,9 +187,11 @@ func (p *Pipe) sendError(err error) {
 // Close closes the pipe and releases resources.
 func (p *Pipe) Close() error {
 	if p.closed.CompareAndSwap(false, true) {
+		p.logger.Debug("closing pipe")
 		p.cancel()
 		close(p.Input)
 		<-p.Done
+		p.logger.Debug("pipe closed")
 	}
 	return nil
 }
@@ -194,6 +216,7 @@ type Stream struct {
 	mu          sync.RWMutex
 	err         error
 	completed   bool
+	logger      *slog.Logger
 }
 
 // NewStream creates a new stream with the given client and transformer.
@@ -202,6 +225,7 @@ func NewStream(client *Client, transformer *Transformer) *Stream {
 		pipe:        NewPipe(DefaultPipeConfig()),
 		client:      client,
 		transformer: transformer,
+		logger:      logger.WithComponent("streaming"),
 	}
 }
 
@@ -210,6 +234,7 @@ func NewStream(client *Client, transformer *Transformer) *Stream {
 func (s *Stream) StartFromReader(reader io.Reader) {
 	parser := NewParser(reader)
 
+	s.logger.Debug("starting stream from reader")
 	s.wg.Add(2)
 
 	// Goroutine 1: Parse and transform provider events
@@ -217,26 +242,35 @@ func (s *Stream) StartFromReader(reader io.Reader) {
 		defer s.wg.Done()
 		defer close(s.pipe.Input)
 
+		eventCount := 0
 		for {
 			event, err := parser.Next()
 			if err != nil {
 				if errors.Is(err, io.EOF) {
+					s.logger.Debug("stream reader reached EOF", "events_parsed", eventCount)
 					return
 				}
+				s.logger.Error("parse error in stream", err, "events_parsed", eventCount)
 				s.setError(fmt.Errorf("parse error: %w", err))
 				return
 			}
 
+			eventCount++
+			s.logger.Debug("SSE event parsed", "event_type", event.Event, "event_id", event.ID)
+
 			chunk, err := s.transformer.Transform(event)
 			if err != nil {
+				s.logger.Error("transform error in stream", err, "event_id", event.ID)
 				s.setError(fmt.Errorf("transform error: %w", err))
 				return
 			}
 
 			if chunk != nil {
+				s.logger.Debug("chunk transformed", "chunk_id", chunk.ID, "finished", chunk.IsFinished)
 				select {
 				case s.pipe.Input <- chunk:
 				case <-s.pipe.Context().Done():
+					s.logger.Debug("stream context cancelled during input")
 					return
 				}
 			}
@@ -247,29 +281,38 @@ func (s *Stream) StartFromReader(reader io.Reader) {
 	go func() {
 		defer s.wg.Done()
 
+		chunkCount := 0
 		for {
 			select {
 			case chunk, ok := <-s.pipe.Output:
 				if !ok {
+					s.logger.Debug("stream output closed, marking complete", "chunks_sent", chunkCount)
 					s.markComplete()
 					return
 				}
 
+				chunkCount++
 				if err := s.sendChunk(chunk); err != nil {
+					s.logger.Error("send chunk error", err, "chunk_id", chunk.ID, "chunks_sent", chunkCount)
 					s.setError(fmt.Errorf("send error: %w", err))
 					return
 				}
+				s.logger.Debug("chunk sent to client", "chunk_id", chunk.ID, "chunks_sent", chunkCount)
 
 			case err := <-s.pipe.Errors:
+				s.logger.Error("pipe error received", err, "chunks_sent", chunkCount)
 				s.setError(err)
 				return
 
 			case <-s.client.Context().Done():
+				s.logger.Debug("client context done", "chunks_sent", chunkCount)
 				s.setError(s.client.Context().Err())
 				return
 			}
 		}
 	}()
+
+	s.logger.Debug("stream started", "pipe_buffer", s.pipe.maxBuffer)
 }
 
 // sendChunk sends a single chunk to the client as an SSE event.
@@ -345,9 +388,15 @@ func (s *Stream) IsComplete() bool {
 
 // Close closes the stream.
 func (s *Stream) Close() error {
+	s.logger.Debug("closing stream")
 	s.pipe.Close()
 	s.wg.Wait()
-	return s.client.Close()
+	err := s.client.Close()
+	if err != nil {
+		s.logger.Error("error closing client", err)
+	}
+	s.logger.Debug("stream closed")
+	return err
 }
 
 // StreamHandler is an HTTP handler that manages streaming connections.
@@ -379,16 +428,21 @@ func (h *StreamHandler) CanAccept() bool {
 // It creates a client, initializes the stream, and returns control to the caller
 // who must call StartFromReader to begin streaming.
 func (h *StreamHandler) HandleStream(w http.ResponseWriter, r *http.Request, provider, model string) (*Stream, error) {
+	log := logger.WithComponent("streaming")
+
 	if !h.CanAccept() {
+		log.Warn("rejecting stream: too many concurrent streams", "active", h.activeStreams.Load(), "max", h.MaxConcurrent)
 		http.Error(w, "too many concurrent streams", http.StatusServiceUnavailable)
 		return nil, errors.New("too many concurrent streams")
 	}
 
 	h.activeStreams.Add(1)
+	log.Debug("stream accepted", "provider", provider, "model", model, "active_streams", h.activeStreams.Load())
 
 	client, err := NewClient(w, r)
 	if err != nil {
 		h.activeStreams.Add(-1)
+		log.Error("failed to create client", err)
 		return nil, fmt.Errorf("create client: %w", err)
 	}
 
@@ -398,7 +452,8 @@ func (h *StreamHandler) HandleStream(w http.ResponseWriter, r *http.Request, pro
 	// Decrement active count when stream closes
 	go func() {
 		<-stream.pipe.Done
-		h.activeStreams.Add(-1)
+		active := h.activeStreams.Add(-1)
+		log.Debug("stream completed", "active_streams", active)
 	}()
 
 	return stream, nil
