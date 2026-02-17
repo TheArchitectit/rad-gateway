@@ -1,0 +1,1191 @@
+openapi: 3.0.3
+info:
+  title: RAD Gateway Quota Management API
+  description: |
+    Quota management API for RAD Gateway.
+
+    Manages request limits, token quotas, and spending caps.
+    Supports hard limits (enforceable) and soft limits (alert-only).
+    Includes burst handling and quota reset schedules.
+
+    ## Quota Types
+
+    - **Request Quota**: Maximum number of requests per time window
+    - **Token Quota**: Maximum tokens per time window
+    - **Cost Quota**: Maximum spend per time window
+    - **Rate Limit**: Requests per second/minute
+
+    ## Time Windows
+
+    - **Per Minute**: For rate limiting
+    - **Per Hour**: For burst control
+    - **Per Day**: For daily budgets
+    - **Per Month**: For billing cycles
+
+    ## Limit Types
+
+    - **Hard**: Requests rejected when exceeded
+    - **Soft**: Alerts sent when exceeded
+
+    ## Security
+    All endpoints require authentication with quota management permissions.
+
+  version: 0.1.0
+  contact:
+    name: RAD Gateway Operations Team
+    email: team-echo@radgateway.local
+
+servers:
+  - url: http://172.16.30.45:8090
+    description: radgateway01 deployment
+  - url: http://localhost:8090
+    description: Local development
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Quotas
+    description: Quota definition and management
+  - name: Usage
+    description: Current quota usage
+  - name: Limits
+    description: Rate limits and thresholds
+  - name: Alerts
+    description: Quota alert configuration
+
+paths:
+  /v0/quotas:
+    get:
+      tags:
+        - Quotas
+      summary: List quotas
+      description: |
+        Returns all configured quotas.
+        Supports filtering by type, status, and scope.
+      operationId: listQuotas
+      parameters:
+        - name: type
+          in: query
+          description: Filter by quota type
+          schema:
+            type: string
+            enum: [requests, tokens, cost, rate]
+        - name: scope
+          in: query
+          description: Filter by scope type
+          schema:
+            type: string
+            enum: [global, api_key, model, provider, tag]
+        - name: status
+          in: query
+          description: Filter by status
+          schema:
+            type: string
+            enum: [active, inactive]
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of quotas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+    post:
+      tags:
+        - Quotas
+      summary: Create quota
+      description: |
+        Creates a new quota definition.
+        Quotas can be global or scoped to specific resources.
+      operationId: createQuota
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQuotaRequest'
+      responses:
+        '201':
+          description: Quota created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quota'
+          headers:
+            Location:
+              description: URL of created quota
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /v0/quotas/{quotaId}:
+    parameters:
+      - name: quotaId
+        in: path
+        required: true
+        description: Quota identifier
+        schema:
+          type: string
+
+    get:
+      tags:
+        - Quotas
+      summary: Get quota
+      description: Returns quota details including current usage.
+      operationId: getQuota
+      responses:
+        '200':
+          description: Quota details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quota'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    put:
+      tags:
+        - Quotas
+      summary: Update quota
+      description: |
+        Updates quota configuration.
+        Changes apply to future quota windows.
+      operationId: updateQuota
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateQuotaRequest'
+      responses:
+        '200':
+          description: Quota updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quota'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      tags:
+        - Quotas
+      summary: Delete quota
+      description: |
+        Deletes a quota.
+        Quota must not be in use by any API keys.
+      operationId: deleteQuota
+      parameters:
+        - name: force
+          in: query
+          description: Remove from all keys first
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '204':
+          description: Quota deleted
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Quota in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v0/quotas/{quotaId}/assignments:
+    parameters:
+      - name: quotaId
+        in: path
+        required: true
+        schema:
+          type: string
+
+    get:
+      tags:
+        - Quotas
+      summary: Get quota assignments
+      description: Returns entities this quota is assigned to.
+      operationId: getQuotaAssignments
+      responses:
+        '200':
+          description: Quota assignments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaAssignments'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    post:
+      tags:
+        - Quotas
+      summary: Assign quota
+      description: Assigns quota to an API key or resource.
+      operationId: assignQuota
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignQuotaRequest'
+      responses:
+        '201':
+          description: Quota assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaAssignment'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v0/quotas/{quotaId}/assignments/{assignmentId}:
+    parameters:
+      - name: quotaId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: assignmentId
+        in: path
+        required: true
+        description: Assignment identifier
+        schema:
+          type: string
+
+    delete:
+      tags:
+        - Quotas
+      summary: Remove quota assignment
+      description: Removes quota assignment from an entity.
+      operationId: removeQuotaAssignment
+      responses:
+        '204':
+          description: Assignment removed
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v0/quotas/{quotaId}/usage:
+    parameters:
+      - name: quotaId
+        in: path
+        required: true
+        schema:
+          type: string
+
+    get:
+      tags:
+        - Usage
+      summary: Get quota usage
+      description: |
+        Returns current usage against quota.
+        Includes usage by time window and trends.
+      operationId: getQuotaUsage
+      parameters:
+        - name: window
+          in: query
+          description: Time window to view
+          schema:
+            type: string
+            enum: [current, previous, all]
+            default: current
+      responses:
+        '200':
+          description: Quota usage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaUsage'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v0/quotas/{quotaId}/reset:
+    parameters:
+      - name: quotaId
+        in: path
+        required: true
+        schema:
+          type: string
+
+    post:
+      tags:
+        - Usage
+      summary: Reset quota usage
+      description: |
+        Manually resets quota usage counter.
+        Only allowed for specific quota types.
+      operationId: resetQuota
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Reason for manual reset
+                reset_type:
+                  type: string
+                  enum: [full, partial]
+                  default: full
+                partial_amount:
+                  type: integer
+                  description: Amount to reset (for partial)
+      responses:
+        '200':
+          description: Quota reset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaResetResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v0/quotas/{quotaId}/history:
+    parameters:
+      - name: quotaId
+        in: path
+        required: true
+        schema:
+          type: string
+
+    get:
+      tags:
+        - Usage
+      summary: Get quota usage history
+      description: Returns historical usage against quota.
+      operationId: getQuotaHistory
+      parameters:
+        - name: start_date
+          in: query
+          description: Start date
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: End date
+          schema:
+            type: string
+            format: date
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 30
+      responses:
+        '200':
+          description: Quota history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaHistory'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v0/quotas/check:
+    post:
+      tags:
+        - Usage
+      summary: Check quota availability
+      description: |
+        Checks if a request would exceed quotas.
+        Used for pre-flight checks by clients.
+      operationId: checkQuota
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuotaCheckRequest'
+      responses:
+        '200':
+          description: Quota check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaCheckResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /v0/quotas/limits:
+    get:
+      tags:
+        - Limits
+      summary: Get rate limits
+      description: |
+        Returns current rate limit configuration.
+        Rate limits control requests per time unit.
+      operationId: getRateLimits
+      parameters:
+        - name: scope
+          in: query
+          description: Filter by scope
+          schema:
+            type: string
+            enum: [global, api_key, ip]
+      responses:
+        '200':
+          description: Rate limits
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /v0/quotas/alerts:
+    get:
+      tags:
+        - Alerts
+      summary: List quota alerts
+      description: Returns configured quota alerts.
+      operationId: listQuotaAlerts
+      parameters:
+        - name: quota_id
+          in: query
+          description: Filter by quota
+          schema:
+            type: string
+        - name: severity
+          in: query
+          description: Filter by severity
+          schema:
+            type: string
+            enum: [info, warning, critical]
+      responses:
+        '200':
+          description: Quota alerts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaAlertList'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+    post:
+      tags:
+        - Alerts
+      summary: Create quota alert
+      description: Creates a quota threshold alert.
+      operationId: createQuotaAlert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQuotaAlertRequest'
+      responses:
+        '201':
+          description: Alert created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaAlert'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /v0/quotas/alerts/{alertId}:
+    parameters:
+      - name: alertId
+        in: path
+        required: true
+        schema:
+          type: string
+
+    delete:
+      tags:
+        - Alerts
+      summary: Delete quota alert
+      description: Removes a quota alert.
+      operationId: deleteQuotaAlert
+      responses:
+        '204':
+          description: Alert deleted
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v0/quotas/templates:
+    get:
+      tags:
+        - Quotas
+      summary: List quota templates
+      description: Returns predefined quota templates.
+      operationId: listQuotaTemplates
+      responses:
+        '200':
+          description: Quota templates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaTemplateList'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: API key JWT token
+
+  schemas:
+    Quota:
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - limit
+        - window
+        - scope
+        - createdAt
+      properties:
+        id:
+          type: string
+          example: "quota_01HQC5Q3B0Q0XM5SJ3J4Z5J3N5"
+        name:
+          type: string
+          example: "Daily Token Limit"
+        description:
+          type: string
+        type:
+          type: string
+          enum: [requests, tokens, cost, rate]
+          description: Type of quota
+        limit:
+          type: integer
+          description: Maximum allowed value
+          example: 1000000
+        window:
+          type: string
+          enum: [minute, hour, day, week, month]
+          description: Time window for quota
+        window_config:
+          type: object
+          description: Window configuration details
+          properties:
+            reset_day:
+              type: integer
+              description: Day of month for monthly reset
+              minimum: 1
+              maximum: 31
+            reset_hour:
+              type: integer
+              description: Hour of day for reset (UTC)
+              minimum: 0
+              maximum: 23
+        limit_type:
+          type: string
+          enum: [hard, soft]
+          description: Hard = reject, Soft = alert only
+          default: hard
+        scope:
+          type: string
+          enum: [global, api_key, model, provider, tag]
+          description: Scope of quota application
+        scope_target:
+          type: string
+          description: Target identifier (e.g., api_key name, model id)
+        scope_tags:
+          type: array
+          items:
+            type: object
+          description: Tags for tag-scoped quotas
+        burst:
+          type: integer
+          description: Burst allowance above limit
+          default: 0
+        status:
+          type: string
+          enum: [active, inactive]
+          default: active
+        alerts:
+          type: array
+          items:
+            type: object
+            properties:
+              threshold_percent:
+                type: integer
+              action:
+                type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    QuotaListResponse:
+      type: object
+      required:
+        - quotas
+        - pagination
+      properties:
+        quotas:
+          type: array
+          items:
+            $ref: '#/components/schemas/Quota'
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+
+    CreateQuotaRequest:
+      type: object
+      required:
+        - name
+        - type
+        - limit
+        - window
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 500
+        type:
+          type: string
+          enum: [requests, tokens, cost, rate]
+        limit:
+          type: integer
+          minimum: 1
+        window:
+          type: string
+          enum: [minute, hour, day, week, month]
+        window_config:
+          type: object
+          properties:
+            reset_day:
+              type: integer
+            reset_hour:
+              type: integer
+        limit_type:
+          type: string
+          enum: [hard, soft]
+          default: hard
+        scope:
+          type: string
+          enum: [global, api_key, model, provider, tag]
+          default: global
+        scope_target:
+          type: string
+        scope_tags:
+          type: array
+          items:
+            type: object
+        burst:
+          type: integer
+          minimum: 0
+          default: 0
+        alerts:
+          type: array
+          items:
+            type: object
+            properties:
+              threshold_percent:
+                type: integer
+                minimum: 1
+                maximum: 100
+              action:
+                type: string
+                enum: [email, webhook, log]
+
+    UpdateQuotaRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 500
+        limit:
+          type: integer
+          minimum: 1
+        window:
+          type: string
+          enum: [minute, hour, day, week, month]
+        limit_type:
+          type: string
+          enum: [hard, soft]
+        burst:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum: [active, inactive]
+        alerts:
+          type: array
+          items:
+            type: object
+
+    QuotaAssignments:
+      type: object
+      properties:
+        quota_id:
+          type: string
+        assignments:
+          type: array
+          items:
+            type: object
+            properties:
+              assignment_id:
+                type: string
+              entity_type:
+                type: string
+                enum: [api_key, model, provider]
+              entity_id:
+                type: string
+              assigned_at:
+                type: string
+                format: date-time
+
+    AssignQuotaRequest:
+      type: object
+      required:
+        - entity_type
+        - entity_id
+      properties:
+        entity_type:
+          type: string
+          enum: [api_key, model, provider]
+        entity_id:
+          type: string
+        override_limit:
+          type: integer
+          description: Optional limit override
+
+    QuotaAssignment:
+      type: object
+      properties:
+        assignment_id:
+          type: string
+        quota_id:
+          type: string
+        entity_type:
+          type: string
+        entity_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    QuotaUsage:
+      type: object
+      required:
+        - quota_id
+        - current
+        - limit
+      properties:
+        quota_id:
+          type: string
+        current:
+          type: integer
+          description: Current usage in current window
+        limit:
+          type: integer
+        remaining:
+          type: integer
+        percentage:
+          type: number
+          format: float
+          description: Usage percentage (0-100+)
+        window_start:
+          type: string
+          format: date-time
+        window_end:
+          type: string
+          format: date-time
+        is_exceeded:
+          type: boolean
+        burst_used:
+          type: integer
+        window_history:
+          type: array
+          items:
+            type: object
+            properties:
+              window_start:
+                type: string
+                format: date-time
+              window_end:
+                type: string
+                format: date-time
+              usage:
+                type: integer
+              exceeded:
+                type: boolean
+
+    QuotaResetResult:
+      type: object
+      properties:
+        quota_id:
+          type: string
+        previous_usage:
+          type: integer
+        new_usage:
+          type: integer
+        reset_at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        reset_by:
+          type: string
+
+    QuotaHistory:
+      type: object
+      properties:
+        quota_id:
+          type: string
+        records:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              usage:
+                type: integer
+              limit:
+                type: integer
+              exceeded:
+                type: boolean
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+
+    QuotaCheckRequest:
+      type: object
+      required:
+        - api_key
+        - estimated_usage
+      properties:
+        api_key:
+          type: string
+        model:
+          type: string
+        estimated_usage:
+          type: object
+          properties:
+            requests:
+              type: integer
+            tokens:
+              type: integer
+            cost:
+              type: number
+
+    QuotaCheckResponse:
+      type: object
+      required:
+        - allowed
+      properties:
+        allowed:
+          type: boolean
+          description: Whether request would be allowed
+        quotas:
+          type: array
+          items:
+            type: object
+            properties:
+              quota_id:
+                type: string
+              quota_name:
+                type: string
+              would_exceed:
+                type: boolean
+              current_usage:
+                type: integer
+              projected_usage:
+                type: integer
+              limit:
+                type: integer
+        rejection_reason:
+          type: string
+          description: Present if allowed=false
+
+    RateLimitListResponse:
+      type: object
+      properties:
+        limits:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              scope:
+                type: string
+              target:
+                type: string
+              requests_per_minute:
+                type: integer
+              burst:
+                type: integer
+              current_usage:
+                type: integer
+              window_remaining:
+                type: integer
+                description: Seconds until window resets
+
+    QuotaAlert:
+      type: object
+      required:
+        - id
+        - quota_id
+        - name
+      properties:
+        id:
+          type: string
+        quota_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        threshold_percent:
+          type: integer
+          description: Alert when usage exceeds this %
+        severity:
+          type: string
+          enum: [info, warning, critical]
+        notification:
+          type: object
+          properties:
+            email:
+              type: array
+              items:
+                type: string
+                format: email
+            webhook:
+              type: string
+              format: uri
+            slack_channel:
+              type: string
+        cooldown_minutes:
+          type: integer
+          description: Minimum time between alerts
+          default: 60
+        last_triggered:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    QuotaAlertList:
+      type: object
+      properties:
+        alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuotaAlert'
+
+    CreateQuotaAlertRequest:
+      type: object
+      required:
+        - quota_id
+        - name
+        - threshold_percent
+      properties:
+        quota_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        threshold_percent:
+          type: integer
+          minimum: 1
+          maximum: 100
+        severity:
+          type: string
+          enum: [info, warning, critical]
+          default: warning
+        notification:
+          type: object
+          properties:
+            email:
+              type: array
+              items:
+                type: string
+            webhook:
+              type: string
+            slack_channel:
+              type: string
+        cooldown_minutes:
+          type: integer
+          minimum: 5
+          default: 60
+
+    QuotaTemplateList:
+      type: object
+      properties:
+        templates:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              description:
+                type: string
+              quota:
+                $ref: '#/components/schemas/CreateQuotaRequest'
+
+    PaginationInfo:
+      type: object
+      required:
+        - has_more
+      properties:
+        cursor:
+          type: string
+        has_more:
+          type: boolean
+        total_count:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+            request_id:
+              type: string
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ForbiddenError:
+      description: Permission denied
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ValidationError:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ConflictError:
+      description: Resource conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

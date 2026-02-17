@@ -1,0 +1,1176 @@
+openapi: 3.0.3
+info:
+  title: RAD Gateway Billing API
+  description: |
+    Cost tracking and billing API for RAD Gateway.
+
+    Provides usage aggregation, cost calculation, billing reports,
+    and cost projections for the AI API Gateway.
+
+    ## Cost Model
+
+    Costs are calculated based on:
+    - Input tokens (prompt tokens)
+    - Output tokens (completion tokens)
+    - Model-specific pricing tiers
+    - Provider-specific rates
+
+    ## Pricing Tiers
+
+    - Standard: Default pricing
+    - Volume: Discounted rates for high usage
+    - Enterprise: Custom negotiated rates
+
+    ## Security
+    All endpoints require authentication with appropriate billing permissions.
+
+  version: 0.1.0
+  contact:
+    name: RAD Gateway Billing Team
+    email: team-bravo@radgateway.local
+
+servers:
+  - url: http://172.16.30.45:8090
+    description: radgateway01 deployment
+  - url: http://localhost:8090
+    description: Local development
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Usage
+    description: Usage aggregation and queries
+  - name: Costs
+    description: Cost calculations and reports
+  - name: Billing
+    description: Billing records and invoices
+  - name: Reports
+    description: Pre-built and custom reports
+  - name: Projections
+    description: Cost forecasting and alerts
+
+paths:
+  /v0/billing/usage:
+    get:
+      tags:
+        - Usage
+      summary: Query usage
+      description: |
+        Returns aggregated usage data with flexible grouping.
+        Supports filtering by time range, API key, model, and provider.
+      operationId: getUsage
+      parameters:
+        - name: start_time
+          in: query
+          required: true
+          description: Start time (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: end_time
+          in: query
+          required: true
+          description: End time (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: granularity
+          in: query
+          description: Time aggregation granularity
+          schema:
+            type: string
+            enum: [hour, day, week, month]
+            default: day
+        - name: group_by
+          in: query
+          description: Group results by dimension
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [api_key, model, provider, tag]
+        - name: api_key
+          in: query
+          description: Filter by API key name
+          schema:
+            type: string
+        - name: model
+          in: query
+          description: Filter by model ID
+          schema:
+            type: string
+        - name: provider
+          in: query
+          description: Filter by provider
+          schema:
+            type: string
+            enum: [mock, openai, anthropic, gemini]
+        - name: tag
+          in: query
+          description: Filter by tag (category:value)
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          description: Pagination cursor
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Results per page (max 1000)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        '200':
+          description: Usage data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /v0/billing/costs:
+    get:
+      tags:
+        - Costs
+      summary: Get costs
+      description: |
+        Returns cost calculations for the specified period.
+        Costs are calculated based on usage and pricing tiers.
+      operationId: getCosts
+      parameters:
+        - name: start_time
+          in: query
+          required: true
+          description: Start time (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: end_time
+          in: query
+          required: true
+          description: End time (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: granularity
+          in: query
+          description: Time aggregation
+          schema:
+            type: string
+            enum: [hour, day, week, month]
+            default: day
+        - name: group_by
+          in: query
+          description: Group results
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [api_key, model, provider, tag, pricing_tier]
+        - name: api_key
+          in: query
+          description: Filter by API key
+          schema:
+            type: string
+        - name: include_details
+          in: query
+          description: Include detailed token breakdown
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Cost data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CostResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /v0/billing/costs/realtime:
+    get:
+      tags:
+        - Costs
+      summary: Get real-time costs
+      description: |
+        Returns costs for the current billing period (month-to-date).
+        Updated in near real-time (5-minute delay).
+      operationId: getRealtimeCosts
+      parameters:
+        - name: group_by
+          in: query
+          description: Group results
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [api_key, model, provider, tag]
+      responses:
+        '200':
+          description: Real-time cost data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RealtimeCostResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /v0/billing/pricing:
+    get:
+      tags:
+        - Costs
+      summary: Get pricing
+      description: |
+        Returns current pricing for all models.
+        Includes input and output token rates.
+      operationId: getPricing
+      parameters:
+        - name: provider
+          in: query
+          description: Filter by provider
+          schema:
+            type: string
+        - name: model
+          in: query
+          description: Filter by model
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Pricing data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /v0/billing/pricing/{modelId}:
+    parameters:
+      - name: modelId
+        in: path
+        required: true
+        description: Model identifier
+        schema:
+          type: string
+
+    get:
+      tags:
+        - Costs
+      summary: Get model pricing
+      description: Returns pricing details for a specific model.
+      operationId: getModelPricing
+      responses:
+        '200':
+          description: Model pricing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelPricing'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    put:
+      tags:
+        - Costs
+      summary: Update model pricing
+      description: |
+        Updates pricing for a model. Admin only.
+        Changes apply to future requests only.
+      operationId: updateModelPricing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePricingRequest'
+      responses:
+        '200':
+          description: Pricing updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelPricing'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v0/billing/invoices:
+    get:
+      tags:
+        - Billing
+      summary: List invoices
+      description: |
+        Returns billing invoices.
+        Supports filtering by date range and status.
+      operationId: listInvoices
+      parameters:
+        - name: start_date
+          in: query
+          description: Start date (ISO 8601)
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: End date (ISO 8601)
+          schema:
+            type: string
+            format: date
+        - name: status
+          in: query
+          description: Invoice status
+          schema:
+            type: string
+            enum: [draft, open, paid, void, uncollectible]
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Invoice list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoiceListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /v0/billing/invoices/{invoiceId}:
+    parameters:
+      - name: invoiceId
+        in: path
+        required: true
+        description: Invoice identifier
+        schema:
+          type: string
+
+    get:
+      tags:
+        - Billing
+      summary: Get invoice
+      description: Returns invoice details including line items.
+      operationId: getInvoice
+      responses:
+        '200':
+          description: Invoice details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v0/billing/invoices/{invoiceId}/pdf:
+    parameters:
+      - name: invoiceId
+        in: path
+        required: true
+        schema:
+          type: string
+
+    get:
+      tags:
+        - Billing
+      summary: Download invoice PDF
+      description: Returns invoice as PDF document.
+      operationId: downloadInvoicePdf
+      responses:
+        '200':
+          description: PDF invoice
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v0/billing/reports:
+    get:
+      tags:
+        - Reports
+      summary: List available reports
+      description: Returns available pre-built report types.
+      operationId: listReports
+      responses:
+        '200':
+          description: Report types
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportTypeList'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    post:
+      tags:
+        - Reports
+      summary: Generate report
+      description: |
+        Generates a billing report.
+        Reports are async - returns report ID for polling.
+      operationId: generateReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateReportRequest'
+      responses:
+        '202':
+          description: Report generation started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportJob'
+          headers:
+            Location:
+              description: URL to poll for status
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /v0/billing/reports/{reportId}:
+    parameters:
+      - name: reportId
+        in: path
+        required: true
+        schema:
+          type: string
+
+    get:
+      tags:
+        - Reports
+      summary: Get report
+      description: |
+        Returns report status and results.
+        Poll until status=completed.
+      operationId: getReport
+      responses:
+        '200':
+          description: Report status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      tags:
+        - Reports
+      summary: Delete report
+      description: Deletes a generated report.
+      operationId: deleteReport
+      responses:
+        '204':
+          description: Report deleted
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /v0/billing/projections:
+    get:
+      tags:
+        - Projections
+      summary: Get cost projections
+      description: |
+        Forecasts costs based on current usage trends.
+        Supports different projection horizons.
+      operationId: getProjections
+      parameters:
+        - name: horizon
+          in: query
+          description: Projection horizon
+          schema:
+            type: string
+            enum: [7d, 30d, 90d, 1y]
+            default: 30d
+        - name: api_key
+          in: query
+          description: Project for specific API key
+          schema:
+            type: string
+        - name: model
+          in: query
+          description: Project for specific model
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cost projections
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CostProjection'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /v0/billing/alerts:
+    get:
+      tags:
+        - Projections
+      summary: List billing alerts
+      description: Returns configured billing alerts.
+      operationId: listBillingAlerts
+      responses:
+        '200':
+          description: Billing alerts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BillingAlert'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+    post:
+      tags:
+        - Projections
+      summary: Create billing alert
+      description: |
+        Creates a new billing alert.
+        Alerts trigger when thresholds are exceeded.
+      operationId: createBillingAlert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBillingAlertRequest'
+      responses:
+        '201':
+          description: Alert created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingAlert'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /v0/billing/alerts/{alertId}:
+    parameters:
+      - name: alertId
+        in: path
+        required: true
+        schema:
+          type: string
+
+    delete:
+      tags:
+        - Projections
+      summary: Delete billing alert
+      description: Removes a billing alert.
+      operationId: deleteBillingAlert
+      responses:
+        '204':
+          description: Alert deleted
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: API key JWT token
+
+  schemas:
+    UsageResponse:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageRecord'
+        summary:
+          type: object
+          properties:
+            total_requests:
+              type: integer
+            total_tokens:
+              type: integer
+            total_prompt_tokens:
+              type: integer
+            total_completion_tokens:
+              type: integer
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+
+    UsageRecord:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        api_key:
+          type: string
+        model:
+          type: string
+        provider:
+          type: string
+        requests:
+          type: integer
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+        tags:
+          type: array
+          items:
+            type: object
+
+    CostResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CostRecord'
+        summary:
+          type: object
+          properties:
+            total_cost:
+              type: number
+              format: float
+            currency:
+              type: string
+              default: USD
+            total_requests:
+              type: integer
+            total_tokens:
+              type: integer
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+
+    CostRecord:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        api_key:
+          type: string
+        model:
+          type: string
+        provider:
+          type: string
+        pricing_tier:
+          type: string
+        requests:
+          type: integer
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        prompt_cost:
+          type: number
+          format: float
+        completion_cost:
+          type: number
+          format: float
+        total_cost:
+          type: number
+          format: float
+
+    RealtimeCostResponse:
+      type: object
+      properties:
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        currency:
+          type: string
+        total_cost:
+          type: number
+        total_requests:
+          type: integer
+        total_tokens:
+          type: integer
+        by_model:
+          type: array
+          items:
+            type: object
+            properties:
+              model:
+                type: string
+              cost:
+                type: number
+              requests:
+                type: integer
+        updated_at:
+          type: string
+          format: date-time
+
+    PricingResponse:
+      type: object
+      properties:
+        currency:
+          type: string
+          default: USD
+        effective_date:
+          type: string
+          format: date-time
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelPricing'
+
+    ModelPricing:
+      type: object
+      required:
+        - model_id
+        - provider
+      properties:
+        model_id:
+          type: string
+          example: "gpt-4o-mini"
+        provider:
+          type: string
+          example: "openai"
+        prompt_rate:
+          type: number
+          description: Cost per 1K input tokens
+          example: 0.0015
+        completion_rate:
+          type: number
+          description: Cost per 1K output tokens
+          example: 0.002
+        currency:
+          type: string
+          default: USD
+        effective_from:
+          type: string
+          format: date-time
+        tiers:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              min_tokens:
+                type: integer
+              max_tokens:
+                type: integer
+              discount_percent:
+                type: number
+
+    UpdatePricingRequest:
+      type: object
+      required:
+        - prompt_rate
+        - completion_rate
+      properties:
+        prompt_rate:
+          type: number
+          minimum: 0
+        completion_rate:
+          type: number
+          minimum: 0
+        effective_from:
+          type: string
+          format: date-time
+
+    InvoiceListResponse:
+      type: object
+      properties:
+        invoices:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvoiceSummary'
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+
+    InvoiceSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [draft, open, paid, void, uncollectible]
+        amount_due:
+          type: number
+        currency:
+          type: string
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        created_at:
+          type: string
+          format: date-time
+        due_date:
+          type: string
+          format: date
+
+    Invoice:
+      allOf:
+        - $ref: '#/components/schemas/InvoiceSummary'
+        - type: object
+          properties:
+            line_items:
+              type: array
+              items:
+                $ref: '#/components/schemas/InvoiceLineItem'
+            subtotal:
+              type: number
+            tax:
+              type: number
+            total:
+              type: number
+            paid_at:
+              type: string
+              format: date-time
+            pdf_url:
+              type: string
+              format: uri
+
+    InvoiceLineItem:
+      type: object
+      properties:
+        description:
+          type: string
+        quantity:
+          type: integer
+        unit_amount:
+          type: number
+        amount:
+          type: number
+        model:
+          type: string
+
+    ReportTypeList:
+      type: object
+      properties:
+        reports:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              description:
+                type: string
+              parameters:
+                type: array
+                items:
+                  type: object
+
+    GenerateReportRequest:
+      type: object
+      required:
+        - type
+        - start_time
+        - end_time
+      properties:
+        type:
+          type: string
+          enum: [usage_summary, cost_breakdown, api_key_analysis, model_comparison]
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        format:
+          type: string
+          enum: [json, csv, pdf]
+          default: json
+        parameters:
+          type: object
+          additionalProperties: true
+
+    ReportJob:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+
+    Report:
+      allOf:
+        - $ref: '#/components/schemas/ReportJob'
+        - type: object
+          properties:
+            download_url:
+              type: string
+              format: uri
+            expires_at:
+              type: string
+              format: date-time
+            size_bytes:
+              type: integer
+
+    CostProjection:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        current_period:
+          type: object
+          properties:
+            cost:
+              type: number
+            days_elapsed:
+              type: integer
+            days_total:
+              type: integer
+        projections:
+          type: array
+          items:
+            type: object
+            properties:
+              horizon:
+                type: string
+              projected_cost:
+                type: number
+              confidence:
+                type: number
+              based_on_daily_average:
+                type: number
+        daily_trend:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              cost:
+                type: number
+              tokens:
+                type: integer
+
+    BillingAlert:
+      type: object
+      required:
+        - id
+        - name
+        - condition
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        condition:
+          type: object
+          properties:
+            type:
+              type: string
+              enum: [monthly_spend, daily_spend, api_key_spend]
+            threshold:
+              type: number
+        notification:
+          type: object
+          properties:
+            email:
+              type: array
+              items:
+                type: string
+                format: email
+            webhook:
+              type: string
+              format: uri
+        created_at:
+          type: string
+          format: date-time
+        last_triggered:
+          type: string
+          format: date-time
+
+    CreateBillingAlertRequest:
+      type: object
+      required:
+        - name
+        - condition
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        condition:
+          type: object
+          properties:
+            type:
+              type: string
+            threshold:
+              type: number
+            api_key:
+              type: string
+        notification:
+          type: object
+          properties:
+            email:
+              type: array
+              items:
+                type: string
+
+    PaginationInfo:
+      type: object
+      required:
+        - has_more
+      properties:
+        cursor:
+          type: string
+        has_more:
+          type: boolean
+        total_count:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+            request_id:
+              type: string
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ForbiddenError:
+      description: Permission denied
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ValidationError:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

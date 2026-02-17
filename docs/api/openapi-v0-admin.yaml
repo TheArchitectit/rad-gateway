@@ -1,0 +1,833 @@
+openapi: 3.0.3
+info:
+  title: RAD Gateway Admin API
+  description: |
+    Administrative API for RAD Gateway (Brass Relay) - Phase 5.
+
+    This API provides system administration, configuration management,
+    health monitoring, and operational controls for the AI API Gateway.
+
+    ## Security
+    All endpoints require administrative API key authentication via Bearer token.
+
+    ## Error Handling
+    Errors follow RFC 7807 (Problem Details) format with additional RAD-specific codes.
+
+  version: 0.1.0
+  contact:
+    name: RAD Gateway Team
+    email: team-alpha@radgateway.local
+  license:
+    name: Proprietary
+    url: https://radgateway.local/license
+
+servers:
+  - url: http://172.16.30.45:8090
+    description: radgateway01 deployment
+  - url: http://localhost:8090
+    description: Local development
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: System
+    description: System-level operations and health checks
+  - name: Configuration
+    description: Gateway configuration management
+  - name: Logs
+    description: Audit logs and operational logs
+  - name: Maintenance
+    description: Maintenance mode and operational controls
+
+paths:
+  /health:
+    get:
+      tags:
+        - System
+      summary: Health check
+      description: |
+        Returns the health status of the gateway and its dependencies.
+        Does not require authentication - public endpoint.
+      security: []
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                version: "0.1.0"
+                timestamp: "2026-02-17T17:00:00Z"
+        '503':
+          description: Service is unhealthy or degrading
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /v0/admin/health/detailed:
+    get:
+      tags:
+        - System
+      summary: Detailed health status
+      description: |
+        Returns detailed health information including all component statuses.
+        Requires admin authentication.
+      operationId: getDetailedHealth
+      responses:
+        '200':
+          description: Detailed health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailedHealthResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /v0/admin/status:
+    get:
+      tags:
+        - System
+      summary: Gateway status
+      description: |
+        Returns current operational status including request rates,
+        active connections, and queue depths.
+      operationId: getGatewayStatus
+      responses:
+        '200':
+          description: Gateway status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayStatus'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /v0/admin/config:
+    get:
+      tags:
+        - Configuration
+      summary: Get configuration
+      description: |
+        Returns the current gateway configuration (sensitive values masked).
+        Migrated from /v0/management/config.
+      operationId: getConfig
+      responses:
+        '200':
+          description: Current configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayConfig'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    put:
+      tags:
+        - Configuration
+      summary: Update configuration
+      description: |
+        Updates gateway configuration. Changes may require restart
+        depending on the configuration field.
+      operationId: updateConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigUpdateRequest'
+      responses:
+        '200':
+          description: Configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayConfig'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '422':
+          $ref: '#/components/responses/UnprocessableError'
+
+  /v0/admin/config/reload:
+    post:
+      tags:
+        - Configuration
+      summary: Reload configuration
+      description: |
+        Reloads configuration from source (Infisical, environment, files).
+        Use when external configuration has changed.
+      operationId: reloadConfig
+      responses:
+        '200':
+          description: Configuration reloaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reloaded:
+                    type: boolean
+                    example: true
+                  timestamp:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v0/admin/model-routes:
+    get:
+      tags:
+        - Configuration
+      summary: List model routes
+      description: |
+        Returns all configured model routing rules including
+        provider candidates and weights.
+      operationId: getModelRoutes
+      responses:
+        '200':
+          description: List of model routes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  routes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelRoute'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    post:
+      tags:
+        - Configuration
+      summary: Create model route
+      description: |
+        Creates a new model route or updates existing route configuration.
+      operationId: createModelRoute
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelRoute'
+      responses:
+        '201':
+          description: Route created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelRoute'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /v0/admin/model-routes/{modelId}:
+    parameters:
+      - name: modelId
+        in: path
+        required: true
+        description: Model identifier (e.g., "gpt-4o-mini")
+        schema:
+          type: string
+
+    get:
+      tags:
+        - Configuration
+      summary: Get model route
+      description: Returns configuration for a specific model route.
+      operationId: getModelRoute
+      responses:
+        '200':
+          description: Model route configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelRoute'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      tags:
+        - Configuration
+      summary: Delete model route
+      description: Removes a model route configuration.
+      operationId: deleteModelRoute
+      responses:
+        '204':
+          description: Route deleted successfully
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v0/admin/logs:
+    get:
+      tags:
+        - Logs
+      summary: Query audit logs
+      description: |
+        Returns audit logs with filtering and pagination.
+        Migrated from /v0/management/usage and /v0/management/traces.
+      operationId: getLogs
+      parameters:
+        - name: start_time
+          in: query
+          description: Start time (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: end_time
+          in: query
+          description: End time (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: api_key_name
+          in: query
+          description: Filter by API key name
+          schema:
+            type: string
+        - name: provider
+          in: query
+          description: Filter by provider
+          schema:
+            type: string
+            enum: [mock, openai, anthropic, gemini]
+        - name: status
+          in: query
+          description: Filter by response status
+          schema:
+            type: string
+            enum: [success, error, timeout]
+        - name: cursor
+          in: query
+          description: Pagination cursor
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Number of results (max 500)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+      responses:
+        '200':
+          description: Audit logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogQueryResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /v0/admin/maintenance:
+    get:
+      tags:
+        - Maintenance
+      summary: Get maintenance mode status
+      description: Returns current maintenance mode configuration.
+      operationId: getMaintenanceMode
+      responses:
+        '200':
+          description: Maintenance mode status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceMode'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    put:
+      tags:
+        - Maintenance
+      summary: Set maintenance mode
+      description: |
+        Enables or disables maintenance mode. When enabled, non-admin
+        requests receive 503 Service Unavailable.
+      operationId: setMaintenanceMode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaintenanceMode'
+      responses:
+        '200':
+          description: Maintenance mode updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceMode'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /v0/admin/providers:
+    get:
+      tags:
+        - System
+      summary: List providers
+      description: Returns all configured providers and their status.
+      operationId: getProviders
+      responses:
+        '200':
+          description: List of providers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProviderStatus'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /v0/admin/providers/{providerName}/health:
+    parameters:
+      - name: providerName
+        in: path
+        required: true
+        description: Provider name
+        schema:
+          type: string
+
+    post:
+      tags:
+        - System
+      summary: Trigger provider health check
+      description: Forces an immediate health check for a provider.
+      operationId: checkProviderHealth
+      responses:
+        '200':
+          description: Health check completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderHealthResult'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Admin API key JWT token
+
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, error]
+          description: Overall health status
+        version:
+          type: string
+          description: Gateway version
+        timestamp:
+          type: string
+          format: date-time
+
+    DetailedHealthResponse:
+      allOf:
+        - $ref: '#/components/schemas/HealthResponse'
+        - type: object
+          properties:
+            components:
+              type: object
+              properties:
+                database:
+                  $ref: '#/components/schemas/ComponentHealth'
+                redis:
+                  $ref: '#/components/schemas/ComponentHealth'
+                providers:
+                  type: object
+                  additionalProperties:
+                    $ref: '#/components/schemas/ComponentHealth'
+
+    ComponentHealth:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy, unknown]
+        latency_ms:
+          type: integer
+          description: Response latency in milliseconds
+        last_check:
+          type: string
+          format: date-time
+        error:
+          type: string
+          description: Error message if unhealthy
+
+    GatewayStatus:
+      type: object
+      required:
+        - uptime_seconds
+        - requests_per_second
+        - active_connections
+      properties:
+        uptime_seconds:
+          type: integer
+          description: Gateway uptime in seconds
+        requests_per_second:
+          type: number
+          format: float
+          description: Current request rate
+        active_connections:
+          type: integer
+          description: Currently active connections
+        request_queue_depth:
+          type: integer
+          description: Number of queued requests
+        circuit_breaker_status:
+          type: object
+          description: Circuit breaker states per provider
+          additionalProperties:
+            type: string
+            enum: [closed, open, half-open]
+
+    GatewayConfig:
+      type: object
+      properties:
+        listenAddr:
+          type: string
+          example: ":8090"
+        retryBudget:
+          type: integer
+          description: Number of retries allowed
+          example: 2
+        keysConfigured:
+          type: integer
+          description: Number of API keys configured
+          example: 5
+        models:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/ModelCandidate'
+
+    ModelCandidate:
+      type: object
+      properties:
+        Provider:
+          type: string
+        Model:
+          type: string
+        Weight:
+          type: integer
+
+    ConfigUpdateRequest:
+      type: object
+      properties:
+        retryBudget:
+          type: integer
+          minimum: 0
+          maximum: 10
+        maintenanceMode:
+          type: boolean
+
+    ModelRoute:
+      type: object
+      required:
+        - modelId
+        - candidates
+      properties:
+        modelId:
+          type: string
+          description: Model identifier (incoming request model)
+          example: "gpt-4o-mini"
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/RouteCandidate'
+          minItems: 1
+
+    RouteCandidate:
+      type: object
+      required:
+        - provider
+        - model
+      properties:
+        provider:
+          type: string
+          enum: [mock, openai, anthropic, gemini]
+          description: Provider to route to
+        model:
+          type: string
+          description: Model name at provider
+        weight:
+          type: integer
+          description: Routing weight (0-100)
+          minimum: 0
+          maximum: 100
+          default: 100
+
+    LogQueryResponse:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageRecord'
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+
+    UsageRecord:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        requestId:
+          type: string
+        traceId:
+          type: string
+        apiKeyName:
+          type: string
+        incomingApiType:
+          type: string
+          enum: [chat, responses, messages, embeddings, images, transcriptions, gemini]
+        incomingModel:
+          type: string
+        selectedModel:
+          type: string
+        provider:
+          type: string
+        responseStatus:
+          type: string
+        durationMs:
+          type: integer
+        usage:
+          $ref: '#/components/schemas/TokenUsage'
+
+    TokenUsage:
+      type: object
+      properties:
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+        cost_total:
+          type: number
+          format: float
+
+    PaginationInfo:
+      type: object
+      required:
+        - has_more
+      properties:
+        cursor:
+          type: string
+          description: Cursor for next page
+        has_more:
+          type: boolean
+        total_count:
+          type: integer
+          description: Total records (if available)
+
+    MaintenanceMode:
+      type: object
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Whether maintenance mode is active
+        message:
+          type: string
+          description: Message shown to users during maintenance
+          maxLength: 500
+        eta:
+          type: string
+          format: date-time
+          description: Estimated completion time
+
+    ProviderStatus:
+      type: object
+      required:
+        - name
+        - status
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy, disabled]
+        lastCheck:
+          type: string
+          format: date-time
+        circuitBreaker:
+          type: string
+          enum: [closed, open, half-open]
+        requestCount24h:
+          type: integer
+        errorRate24h:
+          type: number
+          format: float
+
+    ProviderHealthResult:
+      type: object
+      required:
+        - provider
+        - status
+      properties:
+        provider:
+          type: string
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        latencyMs:
+          type: integer
+        checkedAt:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code
+            message:
+              type: string
+              description: Human-readable error message
+            details:
+              type: object
+              description: Additional error context
+            request_id:
+              type: string
+              description: Request ID for tracking
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: unauthorized
+              message: Invalid or missing API key
+              request_id: abc123
+
+    ForbiddenError:
+      description: Insufficient permissions for this operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: forbidden
+              message: Admin privileges required
+              request_id: abc123
+
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: validation_error
+              message: Invalid request parameters
+              details:
+                retryBudget: must be between 0 and 10
+              request_id: abc123
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: not_found
+              message: Model route not found
+              request_id: abc123
+
+    ConflictError:
+      description: Resource conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: conflict
+              message: Model route already exists
+              request_id: abc123
+
+    UnprocessableError:
+      description: Request cannot be processed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: unprocessable
+              message: Configuration change requires restart
+              request_id: abc123
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: internal_error
+              message: An unexpected error occurred
+              request_id: abc123
