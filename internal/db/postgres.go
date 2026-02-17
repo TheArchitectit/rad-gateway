@@ -134,6 +134,9 @@ func (p *PostgresDB) Quotas() QuotaRepository             { return p.repos.quota
 func (p *PostgresDB) UsageRecords() UsageRecordRepository { return p.repos.usageRecords }
 func (p *PostgresDB) TraceEvents() TraceEventRepository   { return p.repos.traceEvents }
 
+// DB returns the underlying *sql.DB for migrations and advanced operations.
+func (p *PostgresDB) DB() *sql.DB { return p.db }
+
 // RunMigrations executes all pending migrations.
 func (p *PostgresDB) RunMigrations() error {
 	content, err := postgresMigrationsFS.ReadFile("migrations/001_initial_schema.sql")

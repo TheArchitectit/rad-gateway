@@ -131,6 +131,9 @@ func (s *SQLiteDB) Quotas() QuotaRepository           { return s.repos.quotas }
 func (s *SQLiteDB) UsageRecords() UsageRecordRepository { return s.repos.usageRecords }
 func (s *SQLiteDB) TraceEvents() TraceEventRepository { return s.repos.traceEvents }
 
+// DB returns the underlying *sql.DB for migrations and advanced operations.
+func (s *SQLiteDB) DB() *sql.DB { return s.db }
+
 // RunMigrations executes all pending migrations.
 func (s *SQLiteDB) RunMigrations() error {
 	content, err := migrationsFS.ReadFile("migrations/001_initial_schema.sql")

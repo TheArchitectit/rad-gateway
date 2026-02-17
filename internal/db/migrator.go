@@ -23,6 +23,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -462,7 +463,7 @@ func (m *Migrator) runMigrationUp(ctx context.Context, mig Migration) error {
 	cfg := m.config()
 
 	if cfg.DryRun {
-		fmt.Printf("[DRY RUN] Would apply migration %d: %s\n", mig.Version, mig.Name)
+		slog.Info("[DRY RUN] Would apply migration", "version", mig.Version, "name", mig.Name)
 		return nil
 	}
 
@@ -497,7 +498,7 @@ func (m *Migrator) runMigrationUp(ctx context.Context, mig Migration) error {
 		return err
 	}
 
-	fmt.Printf("Applied migration %d: %s (took %dms)\n", mig.Version, mig.Name, time.Since(start).Milliseconds())
+	slog.Info("Applied migration", "version", mig.Version, "name", mig.Name, "duration_ms", time.Since(start).Milliseconds())
 	return nil
 }
 
@@ -510,7 +511,7 @@ func (m *Migrator) runMigrationDown(ctx context.Context, mig Migration) error {
 	}
 
 	if cfg.DryRun {
-		fmt.Printf("[DRY RUN] Would rollback migration %d: %s\n", mig.Version, mig.Name)
+		slog.Info("[DRY RUN] Would rollback migration", "version", mig.Version, "name", mig.Name)
 		return nil
 	}
 
@@ -542,7 +543,7 @@ func (m *Migrator) runMigrationDown(ctx context.Context, mig Migration) error {
 		return err
 	}
 
-	fmt.Printf("Rolled back migration %d: %s (took %dms)\n", mig.Version, mig.Name, time.Since(start).Milliseconds())
+	slog.Info("Rolled back migration", "version", mig.Version, "name", mig.Name, "duration_ms", time.Since(start).Milliseconds())
 	return nil
 }
 
