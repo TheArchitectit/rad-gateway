@@ -84,14 +84,11 @@ func (f *AdapterFactory) createAnthropicAdapter(config ProviderConfig) AdapterWi
 
 // createGeminiAdapter creates an adapter configured for Google Gemini API.
 func (f *AdapterFactory) createGeminiAdapter(config ProviderConfig) AdapterWithContext {
-	// Create the gemini package adapter with configuration
 	geminiAdapter := gemini.NewAdapter(config.APIKey,
 		gemini.WithBaseURL(config.BaseURL),
 		gemini.WithTimeout(config.Timeout.RequestTimeout),
 	)
 
-	// Create wrapper transformers that implement the provider package interfaces
-	// while delegating to the gemini package implementations
 	reqTransform := &GeminiRequestTransformer{config: config}
 	respTransform := &GeminiResponseTransformer{config: config, adapter: geminiAdapter}
 
@@ -104,66 +101,48 @@ func (f *AdapterFactory) createGeminiAdapter(config ProviderConfig) AdapterWithC
 	return adapter
 }
 
-// =============================================================================
-// OpenAI Transformers
-// =============================================================================
-
 // OpenAIRequestTransformer handles OpenAI-specific request transformations.
 type OpenAIRequestTransformer struct {
 	config ProviderConfig
 }
 
-// TransformHeaders adds OpenAI authentication and version headers.
+// TransformHeaders adds OpenAI authentication headers.
 func (t *OpenAIRequestTransformer) TransformHeaders(req *http.Request) error {
 	req.Header.Set("Authorization", "Bearer "+t.config.APIKey)
 	req.Header.Set("Content-Type", "application/json")
-
 	for key, value := range t.config.Headers {
 		req.Header.Set(key, value)
 	}
-
 	return nil
 }
 
-// TransformBody handles OpenAI-specific body modifications.
+// TransformBody sets default model if not specified.
 func (t *OpenAIRequestTransformer) TransformBody(body io.Reader, contentType string) (io.Reader, string, error) {
 	if body == nil {
 		return body, contentType, nil
 	}
-
-	// OpenAI accepts the standard format, so we mainly pass through
-	// but could add provider-specific fields here
 	data, err := io.ReadAll(body)
 	if err != nil {
 		return nil, "", err
 	}
-
-	// Parse and potentially modify the request
 	var requestMap map[string]any
 	if err := json.Unmarshal(data, &requestMap); err != nil {
-		// Not JSON, pass through as-is
 		return bytes.NewReader(data), contentType, nil
 	}
-
-	// Set default model if not specified
 	if model, ok := requestMap["model"].(string); !ok || model == "" {
 		requestMap["model"] = t.config.DefaultModel
 	}
-
 	modified, err := json.Marshal(requestMap)
 	if err != nil {
 		return nil, "", err
 	}
-
 	return bytes.NewReader(modified), "application/json", nil
 }
 
 // TransformURL modifies the request URL for OpenAI endpoints.
 func (t *OpenAIRequestTransformer) TransformURL(req *http.Request) error {
-	// Rewrite URL to point to OpenAI API
 	req.URL.Scheme = "https"
 	req.URL.Host = strings.TrimPrefix(t.config.BaseURL, "https://")
-	// Path is preserved from original request
 	return nil
 }
 
@@ -174,20 +153,17 @@ type OpenAIResponseTransformer struct {
 
 // TransformHeaders normalizes OpenAI response headers.
 func (t *OpenAIResponseTransformer) TransformHeaders(resp *http.Response) error {
-	// Add gateway identification header
 	resp.Header.Set("X-Gateway-Provider", "openai")
 	return nil
 }
 
 // TransformBody handles OpenAI-specific response body normalization.
 func (t *OpenAIResponseTransformer) TransformBody(body io.Reader, contentType string) (io.Reader, string, error) {
-	// OpenAI responses are already in a standard format, pass through
 	return body, contentType, nil
 }
 
 // TransformStatusCode normalizes OpenAI status codes.
 func (t *OpenAIResponseTransformer) TransformStatusCode(code int) int {
-	// OpenAI status codes are standard, no transformation needed
 	return code
 }
 
@@ -196,7 +172,6 @@ type OpenAIStreamTransformer struct{}
 
 // TransformStreamChunk processes OpenAI SSE chunks.
 func (t *OpenAIStreamTransformer) TransformStreamChunk(chunk []byte) ([]byte, error) {
-	// OpenAI SSE format is already standard, pass through
 	return chunk, nil
 }
 
@@ -204,10 +179,6 @@ func (t *OpenAIStreamTransformer) TransformStreamChunk(chunk []byte) ([]byte, er
 func (t *OpenAIStreamTransformer) IsDoneMarker(chunk []byte) bool {
 	return bytes.Contains(chunk, []byte("[DONE]"))
 }
-
-// =============================================================================
-// Anthropic Transformers
-// =============================================================================
 
 // AnthropicRequestTransformer handles Anthropic-specific request transformations.
 type AnthropicRequestTransformer struct {
@@ -219,11 +190,9 @@ func (t *AnthropicRequestTransformer) TransformHeaders(req *http.Request) error 
 	req.Header.Set("x-api-key", t.config.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("anthropic-version", "2023-06-01")
-
 	for key, value := range t.config.Headers {
 		req.Header.Set(key, value)
 	}
-
 	return nil
 }
 
@@ -232,55 +201,50 @@ func (t *AnthropicRequestTransformer) TransformBody(body io.Reader, contentType 
 	if body == nil {
 		return body, contentType, nil
 	}
-
 	data, err := io.ReadAll(body)
 	if err != nil {
 		return nil, "", err
 	}
-
-	// Parse internal request format
-	var internalReq map[string]any
+	var internalReq struct {
+		Model       string `json:"model"`
+		Messages    []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+		Stream      bool    `json:"stream,omitempty"`
+		Temperature float64 `json:"temperature,omitempty"`
+		MaxTokens   int     `json:"max_tokens,omitempty"`
+	}
 	if err := json.Unmarshal(data, &internalReq); err != nil {
 		return bytes.NewReader(data), contentType, nil
 	}
-
-	// Transform to Anthropic format
 	anthropicReq := make(map[string]any)
-
-	// Map model
-	if model, ok := internalReq["model"].(string); ok {
-		anthropicReq["model"] = model
+	if internalReq.Model != "" {
+		anthropicReq["model"] = internalReq.Model
 	} else {
 		anthropicReq["model"] = t.config.DefaultModel
 	}
-
-	// Transform messages format if present
-	if messages, ok := internalReq["messages"].([]any); ok {
-		anthropicReq["messages"] = messages
+	messages := make([]map[string]any, len(internalReq.Messages))
+	for i, m := range internalReq.Messages {
+		messages[i] = map[string]any{
+			"role":    m.Role,
+			"content": m.Content,
+		}
 	}
-
-	// Map max_tokens
-	if maxTokens, ok := internalReq["max_tokens"].(float64); ok {
-		anthropicReq["max_tokens"] = int(maxTokens)
+	anthropicReq["messages"] = messages
+	if internalReq.MaxTokens > 0 {
+		anthropicReq["max_tokens"] = internalReq.MaxTokens
 	} else {
-		anthropicReq["max_tokens"] = 4096 // Default
+		anthropicReq["max_tokens"] = 4096
 	}
-
-	// Map temperature
-	if temp, ok := internalReq["temperature"].(float64); ok {
-		anthropicReq["temperature"] = temp
+	if internalReq.Temperature != 0 {
+		anthropicReq["temperature"] = internalReq.Temperature
 	}
-
-	// Map stream
-	if stream, ok := internalReq["stream"].(bool); ok {
-		anthropicReq["stream"] = stream
-	}
-
+	anthropicReq["stream"] = internalReq.Stream
 	modified, err := json.Marshal(anthropicReq)
 	if err != nil {
 		return nil, "", err
 	}
-
 	return bytes.NewReader(modified), "application/json", nil
 }
 
@@ -304,8 +268,6 @@ func (t *AnthropicResponseTransformer) TransformHeaders(resp *http.Response) err
 
 // TransformBody converts Anthropic response to internal standard format.
 func (t *AnthropicResponseTransformer) TransformBody(body io.Reader, contentType string) (io.Reader, string, error) {
-	// For now, pass through Anthropic responses
-	// Future: normalize to a common response format
 	return body, contentType, nil
 }
 
@@ -327,26 +289,17 @@ func (t *AnthropicStreamTransformer) IsDoneMarker(chunk []byte) bool {
 	return bytes.Contains(chunk, []byte("event: message_stop"))
 }
 
-// =============================================================================
-// Gemini Transformers
-// =============================================================================
-
 // GeminiRequestTransformer handles Google Gemini-specific request transformations.
-// It wraps the gemini package's RequestTransformer to implement the provider.RequestTransformer interface.
 type GeminiRequestTransformer struct {
-	config    ProviderConfig
-	transform *gemini.RequestTransformer
+	config ProviderConfig
 }
 
 // TransformHeaders adds Gemini authentication headers.
 func (t *GeminiRequestTransformer) TransformHeaders(req *http.Request) error {
-	// Gemini uses API key in query params, not headers
 	req.Header.Set("Content-Type", "application/json")
-
 	for key, value := range t.config.Headers {
 		req.Header.Set(key, value)
 	}
-
 	return nil
 }
 
@@ -355,64 +308,51 @@ func (t *GeminiRequestTransformer) TransformBody(body io.Reader, contentType str
 	if body == nil {
 		return body, contentType, nil
 	}
-
 	data, err := io.ReadAll(body)
 	if err != nil {
 		return nil, "", err
 	}
-
-	var internalReq map[string]any
+	var internalReq struct {
+		Messages    []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+		Temperature float64 `json:"temperature,omitempty"`
+		MaxTokens   int     `json:"max_tokens,omitempty"`
+		Stream      bool    `json:"stream,omitempty"`
+	}
 	if err := json.Unmarshal(data, &internalReq); err != nil {
 		return bytes.NewReader(data), contentType, nil
 	}
-
-	// Transform to Gemini format
 	geminiReq := make(map[string]any)
-
-	// Gemini uses contents array with parts
 	contents := make([]map[string]any, 0)
-
-	if messages, ok := internalReq["messages"].([]any); ok {
-		for _, msg := range messages {
-			if msgMap, ok := msg.(map[string]any); ok {
-				role, _ := msgMap["role"].(string)
-				content, _ := msgMap["content"].(string)
-
-				// Map roles: user -> user, assistant -> model
-				geminiRole := role
-				if role == "assistant" {
-					geminiRole = "model"
-				}
-
-				contents = append(contents, map[string]any{
-					"role": geminiRole,
-					"parts": []map[string]any{
-						{"text": content},
-					},
-				})
-			}
+	for _, msg := range internalReq.Messages {
+		role := msg.Role
+		if role == "assistant" {
+			role = "model"
 		}
+		contents = append(contents, map[string]any{
+			"role": role,
+			"parts": []map[string]any{
+				{"text": msg.Content},
+			},
+		})
 	}
-
 	geminiReq["contents"] = contents
-
-	// Add generation config
 	genConfig := make(map[string]any)
-	if temp, ok := internalReq["temperature"].(float64); ok {
-		genConfig["temperature"] = temp
+	if internalReq.Temperature != 0 {
+		genConfig["temperature"] = internalReq.Temperature
 	}
-	if maxTokens, ok := internalReq["max_tokens"].(float64); ok {
-		genConfig["maxOutputTokens"] = int(maxTokens)
+	if internalReq.MaxTokens != 0 {
+		genConfig["maxOutputTokens"] = internalReq.MaxTokens
 	}
 	if len(genConfig) > 0 {
 		geminiReq["generationConfig"] = genConfig
 	}
-
 	modified, err := json.Marshal(geminiReq)
 	if err != nil {
 		return nil, "", err
 	}
-
 	return bytes.NewReader(modified), "application/json", nil
 }
 
@@ -420,28 +360,21 @@ func (t *GeminiRequestTransformer) TransformBody(body io.Reader, contentType str
 func (t *GeminiRequestTransformer) TransformURL(req *http.Request) error {
 	req.URL.Scheme = "https"
 	req.URL.Host = strings.TrimPrefix(t.config.BaseURL, "https://")
-
-	// Add API key as query parameter
 	query := req.URL.Query()
 	query.Set("key", t.config.APIKey)
-
-	// Check if streaming
 	data, _ := io.ReadAll(req.Body)
 	req.Body = io.NopCloser(bytes.NewReader(data))
-
 	var bodyMap map[string]any
 	if err := json.Unmarshal(data, &bodyMap); err == nil {
 		if stream, ok := bodyMap["stream"].(bool); ok && stream {
 			query.Set("alt", "sse")
 		}
 	}
-
 	req.URL.RawQuery = query.Encode()
 	return nil
 }
 
 // GeminiResponseTransformer handles Gemini-specific response transformations.
-// It wraps the gemini package's ResponseTransformer to implement the provider.ResponseTransformer interface.
 type GeminiResponseTransformer struct {
 	config  ProviderConfig
 	adapter *gemini.Adapter
@@ -458,28 +391,21 @@ func (t *GeminiResponseTransformer) TransformBody(body io.Reader, contentType st
 	if body == nil {
 		return body, contentType, nil
 	}
-
 	data, err := io.ReadAll(body)
 	if err != nil {
 		return nil, "", err
 	}
-
-	// Try to parse and transform Gemini response
 	var geminiResp gemini.GeminiResponse
 	if err := json.Unmarshal(data, &geminiResp); err == nil && len(geminiResp.Candidates) > 0 {
-		// Use the gemini package's transformer
 		transformer := gemini.NewResponseTransformer()
 		result, err := transformer.Transform(geminiResp, t.config.DefaultModel)
 		if err == nil {
-			// Convert to JSON and return
 			output, err := json.Marshal(result)
 			if err == nil {
 				return bytes.NewReader(output), "application/json", nil
 			}
 		}
 	}
-
-	// Fall back to passing through unchanged if transformation fails
 	return bytes.NewReader(data), contentType, nil
 }
 
@@ -489,7 +415,6 @@ func (t *GeminiResponseTransformer) TransformStatusCode(code int) int {
 }
 
 // GeminiStreamTransformer handles Gemini SSE streaming transformations.
-// It wraps the gemini package's StreamTransformer to implement the provider.StreamTransformer interface.
 type GeminiStreamTransformer struct {
 	adapter   *gemini.Adapter
 	transform *gemini.StreamTransformer
@@ -498,36 +423,24 @@ type GeminiStreamTransformer struct {
 
 // TransformStreamChunk processes Gemini SSE chunks.
 func (t *GeminiStreamTransformer) TransformStreamChunk(chunk []byte) ([]byte, error) {
-	// Initialize transformer on first use
 	if t.transform == nil {
 		t.transform = gemini.NewStreamTransformer()
 		t.transform.Init(t.model)
 	}
-
-	// Extract data prefix if present
 	data := string(chunk)
 	if strings.HasPrefix(data, "data: ") {
 		data = strings.TrimPrefix(data, "data: ")
 	}
-
-	// Skip empty lines and [DONE] markers
 	if data == "" || data == "[DONE]" {
 		return chunk, nil
 	}
-
-	// Transform the chunk using gemini package
 	result, isFinal, err := t.transform.TransformChunk(data)
 	if err != nil {
-		// If transformation fails, pass through unchanged
 		return chunk, nil
 	}
-
-	// The gemini TransformChunk returns already formatted SSE data
 	if isFinal {
-		// Add DONE marker after the result
 		result = append(result, []byte("data: [DONE]\n\n")...)
 	}
-
 	return result, nil
 }
 
