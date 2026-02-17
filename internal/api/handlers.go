@@ -64,7 +64,7 @@ func (h *Handlers) health(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+	writeJSONResponse(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
 func (h *Handlers) chatCompletions(w http.ResponseWriter, r *http.Request) {
@@ -95,7 +95,7 @@ func (h *Handlers) chatCompletions(w http.ResponseWriter, r *http.Request) {
 		upstreamError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, out.Payload)
+	writeJSONResponse(w, http.StatusOK, out.Payload)
 }
 
 func (h *Handlers) responses(w http.ResponseWriter, r *http.Request) {
@@ -116,7 +116,7 @@ func (h *Handlers) responses(w http.ResponseWriter, r *http.Request) {
 		upstreamError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, out.Payload)
+	writeJSONResponse(w, http.StatusOK, out.Payload)
 }
 
 func (h *Handlers) messages(w http.ResponseWriter, r *http.Request) {
@@ -137,7 +137,7 @@ func (h *Handlers) messages(w http.ResponseWriter, r *http.Request) {
 		upstreamError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, out.Payload)
+	writeJSONResponse(w, http.StatusOK, out.Payload)
 }
 
 func (h *Handlers) embeddings(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +158,7 @@ func (h *Handlers) embeddings(w http.ResponseWriter, r *http.Request) {
 		upstreamError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, out.Payload)
+	writeJSONResponse(w, http.StatusOK, out.Payload)
 }
 
 func (h *Handlers) images(w http.ResponseWriter, r *http.Request) {
@@ -171,7 +171,7 @@ func (h *Handlers) images(w http.ResponseWriter, r *http.Request) {
 		upstreamError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, out.Payload)
+	writeJSONResponse(w, http.StatusOK, out.Payload)
 }
 
 func (h *Handlers) transcriptions(w http.ResponseWriter, r *http.Request) {
@@ -184,7 +184,7 @@ func (h *Handlers) transcriptions(w http.ResponseWriter, r *http.Request) {
 		upstreamError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, out.Payload)
+	writeJSONResponse(w, http.StatusOK, out.Payload)
 }
 
 func (h *Handlers) geminiCompat(w http.ResponseWriter, r *http.Request) {
@@ -202,7 +202,7 @@ func (h *Handlers) geminiCompat(w http.ResponseWriter, r *http.Request) {
 		upstreamError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, out.Payload)
+	writeJSONResponse(w, http.StatusOK, out.Payload)
 }
 
 func (h *Handlers) models(w http.ResponseWriter, r *http.Request) {
@@ -210,7 +210,7 @@ func (h *Handlers) models(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeJSONResponse(w, http.StatusOK, map[string]any{
 		"object": "list",
 		"data": []map[string]any{
 			{"id": "gpt-4o-mini", "object": "model", "owned_by": "rad"},
@@ -220,20 +220,20 @@ func (h *Handlers) models(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func writeJSON(w http.ResponseWriter, code int, v any) {
+func writeJSONResponse(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(v)
 }
 
 func methodNotAllowed(w http.ResponseWriter) {
-	writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": map[string]any{"message": "method not allowed"}})
+	writeJSONResponse(w, http.StatusMethodNotAllowed, map[string]any{"error": map[string]any{"message": "method not allowed"}})
 }
 
 func badRequest(w http.ResponseWriter, err error) {
-	writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"message": err.Error()}})
+	writeJSONResponse(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"message": err.Error()}})
 }
 
 func upstreamError(w http.ResponseWriter, err error) {
-	writeJSON(w, http.StatusBadGateway, map[string]any{"error": map[string]any{"message": err.Error()}})
+	writeJSONResponse(w, http.StatusBadGateway, map[string]any{"error": map[string]any{"message": err.Error()}})
 }

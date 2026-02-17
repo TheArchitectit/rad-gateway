@@ -29,8 +29,17 @@ type QueryMetrics struct {
 	MaxTime time.Duration
 	// Number of errors
 	ErrorCount uint64
-	// Last executed timestamp
-	LastExecuted time.Time
+	// Last executed timestamp (stored as Unix nanoseconds for atomic operations)
+	lastExecutedUnix int64
+}
+
+// LastExecuted returns the timestamp of last execution
+func (qm *QueryMetrics) LastExecuted() time.Time {
+	unix := atomic.LoadInt64(&qm.lastExecutedUnix)
+	if unix == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, unix)
 }
 
 // AverageTime returns the average execution time for this query.
@@ -178,7 +187,8 @@ func (c *DefaultMetricsCollector) RecordQuery(query, queryType, table string, du
 	// Update metrics atomically
 	atomic.AddUint64(&metrics.Count, 1)
 	atomic.AddInt64((*int64)(&metrics.TotalTime), int64(duration))
-	atomic.StoreInt64((*int64)(&metrics.LastExecuted), time.Now().UnixNano())
+	// Store LastExecuted as Unix timestamp (nanoseconds) in a separate int64 field
+	atomic.StoreInt64(&metrics.lastExecutedUnix, time.Now().UnixNano())
 
 	// Update min/max times with locking
 	c.mu.Lock()
@@ -283,7 +293,7 @@ func (c *DefaultMetricsCollector) GetConnectionPoolMetrics(db *sql.DB) Connectio
 		Idle:                stats.Idle,
 		WaitCount:           stats.WaitCount,
 		WaitDuration:        stats.WaitDuration,
-		MaxWaitDuration:     stats.MaxWaitDuration,
+		// MaxWaitDuration not available in this Go version
 		CollectedAt:         time.Now(),
 	}
 }

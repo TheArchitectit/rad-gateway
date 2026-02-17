@@ -127,7 +127,7 @@ func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		permissions,
 	)
 	if err != nil {
-		h.log.Error("login: failed to generate tokens", err, "email", req.Email)
+		h.log.Error("login: failed to generate tokens", "error", err, "email", req.Email)
 		writeJSONError(w, http.StatusInternalServerError, "authentication failed")
 		return
 	}
@@ -240,7 +240,7 @@ func (h *AuthHandler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		permissions,
 	)
 	if err != nil {
-		h.log.Error("refresh: failed to generate tokens", err, "user_id", user.ID)
+		h.log.Error("refresh: failed to generate tokens", "error", err, "user_id", user.ID)
 		writeJSONError(w, http.StatusInternalServerError, "token refresh failed")
 		return
 	}

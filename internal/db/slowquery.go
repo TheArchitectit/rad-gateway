@@ -102,7 +102,7 @@ func (t SlowQueryThresholds) GetSeverity(duration time.Duration) SlowQuerySeveri
 }
 
 // SlowQueryAlertHandler is called when a slow query is detected.
-type SlowQueryAlertHandler func(query *SlowQuery)
+type SlowQueryAlertHandler func(query *TrackedSlowQuery)
 
 // SlowQueryLogger defines the interface for slow query logging.
 type SlowQueryLogger interface {
@@ -111,9 +111,9 @@ type SlowQueryLogger interface {
 	// LogWithContext records a slow query with context
 	LogWithContext(ctx context.Context, query string, duration time.Duration, params []interface{}, rowCount int64, caller string)
 	// GetRecentQueries returns recent slow queries
-	GetRecentQueries(limit int) []*SlowQuery
+	GetRecentQueries(limit int) []*TrackedSlowQuery
 	// GetQueriesBySeverity returns queries filtered by severity
-	GetQueriesBySeverity(severity SlowQuerySeverity, limit int) []*SlowQuery
+	GetQueriesBySeverity(severity SlowQuerySeverity, limit int) []*TrackedSlowQuery
 	// GetQueryStats returns statistics about slow queries
 	GetQueryStats(since time.Time) SlowQueryStats
 	// RegisterAlertHandler registers a handler for slow query alerts
@@ -160,7 +160,7 @@ type DefaultSlowQueryLogger struct {
 	thresholds SlowQueryThresholds
 
 	// Ring buffer for recent queries
-	buffer     []*SlowQuery
+	buffer     []*TrackedSlowQuery
 	bufferSize int
 	head       int
 	count      int
@@ -226,7 +226,7 @@ func NewSlowQueryLogger(opts ...SlowQueryLoggerOption) *DefaultSlowQueryLogger {
 	logger := &DefaultSlowQueryLogger{
 		thresholds:   DefaultSlowQueryThresholds(),
 		bufferSize:   1000,
-		buffer:       make([]*SlowQuery, 1000),
+		buffer:       make([]*TrackedSlowQuery, 1000),
 		dedupWindow:  5 * time.Minute,
 		recentHashes: make(map[string]time.Time),
 		logger:       slog.Default(),
@@ -240,7 +240,7 @@ func NewSlowQueryLogger(opts ...SlowQueryLoggerOption) *DefaultSlowQueryLogger {
 
 	// Ensure buffer matches configured size
 	if logger.bufferSize != len(logger.buffer) {
-		logger.buffer = make([]*SlowQuery, logger.bufferSize)
+		logger.buffer = make([]*TrackedSlowQuery, logger.bufferSize)
 	}
 
 	// Start cleanup goroutine
@@ -309,7 +309,7 @@ func (l *DefaultSlowQueryLogger) LogWithContext(ctx context.Context, query strin
 }
 
 // GetRecentQueries returns recent slow queries.
-func (l *DefaultSlowQueryLogger) GetRecentQueries(limit int) []*SlowQuery {
+func (l *DefaultSlowQueryLogger) GetRecentQueries(limit int) []*TrackedSlowQuery {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -320,7 +320,7 @@ func (l *DefaultSlowQueryLogger) GetRecentQueries(limit int) []*SlowQuery {
 		limit = l.bufferSize
 	}
 
-	result := make([]*SlowQuery, 0, limit)
+	result := make([]*TrackedSlowQuery, 0, limit)
 	for i := 0; i < limit; i++ {
 		idx := (l.head - 1 - i + l.bufferSize) % l.bufferSize
 		if l.buffer[idx] != nil {
@@ -333,10 +333,10 @@ func (l *DefaultSlowQueryLogger) GetRecentQueries(limit int) []*SlowQuery {
 }
 
 // GetQueriesBySeverity returns queries filtered by severity.
-func (l *DefaultSlowQueryLogger) GetQueriesBySeverity(severity SlowQuerySeverity, limit int) []*SlowQuery {
+func (l *DefaultSlowQueryLogger) GetQueriesBySeverity(severity SlowQuerySeverity, limit int) []*TrackedSlowQuery {
 	allQueries := l.GetRecentQueries(l.count)
 
-	var result []*SlowQuery
+	var result []*TrackedSlowQuery
 	for _, q := range allQueries {
 		if q.Severity == severity {
 			queryCopy := *q
@@ -412,7 +412,7 @@ func (l *DefaultSlowQueryLogger) GetThresholds() SlowQueryThresholds {
 	return l.thresholds
 }
 
-func (l *DefaultSlowQueryLogger) addToBuffer(query *SlowQuery) {
+func (l *DefaultSlowQueryLogger) addToBuffer(query *TrackedSlowQuery) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -453,7 +453,7 @@ func (e *queryStatEntry) avgTime() time.Duration {
 	return e.totalTime / time.Duration(e.count)
 }
 
-func (l *DefaultSlowQueryLogger) logSlowQuery(sq *SlowQuery) {
+func (l *DefaultSlowQueryLogger) logSlowQuery(sq *TrackedSlowQuery) {
 	// Log with appropriate level based on severity
 	attrs := []slog.Attr{
 		slog.String("query_id", sq.ID),
@@ -467,11 +467,11 @@ func (l *DefaultSlowQueryLogger) logSlowQuery(sq *SlowQuery) {
 
 	switch sq.Severity {
 	case SeverityFatal:
-		l.logger.Error("FATAL: Extremely slow query detected", slog.Group("slow_query", attrs...))
+		l.logger.Error("FATAL: Extremely slow query detected", "slow_query", slog.Any("attrs", attrs))
 	case SeverityCritical:
-		l.logger.Error("CRITICAL: Very slow query detected", slog.Group("slow_query", attrs...))
+		l.logger.Error("CRITICAL: Very slow query detected", "slow_query", slog.Any("attrs", attrs))
 	case SeverityWarning:
-		l.logger.Warn("Slow query detected", slog.Group("slow_query", attrs...))
+		l.logger.Warn("Slow query detected", "slow_query", slog.Any("attrs", attrs))
 	}
 
 	// Log the actual query at debug level for investigation
@@ -481,7 +481,7 @@ func (l *DefaultSlowQueryLogger) logSlowQuery(sq *SlowQuery) {
 	)
 }
 
-func (l *DefaultSlowQueryLogger) triggerAlerts(sq *SlowQuery) {
+func (l *DefaultSlowQueryLogger) triggerAlerts(sq *TrackedSlowQuery) {
 	l.mu.RLock()
 	handlers := make([]SlowQueryAlertHandler, len(l.handlers))
 	copy(handlers, l.handlers)
@@ -661,7 +661,7 @@ type AlertConfig struct {
 
 // WebhookAlertHandler creates an alert handler that posts to a webhook.
 func WebhookAlertHandler(config AlertConfig) SlowQueryAlertHandler {
-	return func(query *SlowQuery) {
+	return func(query *TrackedSlowQuery) {
 		if query.Severity < config.MinSeverity {
 			return
 		}
@@ -677,7 +677,7 @@ func WebhookAlertHandler(config AlertConfig) SlowQueryAlertHandler {
 
 // EmailAlertHandler creates an alert handler that sends email.
 func EmailAlertHandler(config AlertConfig) SlowQueryAlertHandler {
-	return func(query *SlowQuery) {
+	return func(query *TrackedSlowQuery) {
 		if query.Severity < config.MinSeverity {
 			return
 		}
@@ -693,7 +693,7 @@ func EmailAlertHandler(config AlertConfig) SlowQueryAlertHandler {
 
 // CompositeAlertHandler combines multiple alert handlers.
 func CompositeAlertHandler(handlers ...SlowQueryAlertHandler) SlowQueryAlertHandler {
-	return func(query *SlowQuery) {
+	return func(query *TrackedSlowQuery) {
 		for _, h := range handlers {
 			h(query)
 		}
