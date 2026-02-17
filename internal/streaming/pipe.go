@@ -35,6 +35,9 @@ type Pipe struct {
 	closed atomic.Bool
 	logger *slog.Logger
 
+	// closeOnce ensures Input channel is closed only once
+	closeOnce sync.Once
+
 	// buffer for handling backpressure
 	buffer     []*Chunk
 	bufferSize int
@@ -164,6 +167,8 @@ bufferCurrent:
 }
 
 // drainBuffer sends any remaining buffered chunks.
+// Must only be called from run() goroutine - run() already holds exclusive
+// access to p.buffer during execution, so no additional mutex is needed.
 func (p *Pipe) drainBuffer() {
 	for _, chunk := range p.buffer {
 		select {
@@ -189,11 +194,23 @@ func (p *Pipe) Close() error {
 	if p.closed.CompareAndSwap(false, true) {
 		p.logger.Debug("closing pipe")
 		p.cancel()
-		close(p.Input)
+		// Ensure Input is closed only once, even if Close is called multiple times
+		// or if the input is closed elsewhere (e.g., by the producer goroutine)
+		p.closeOnce.Do(func() {
+			close(p.Input)
+		})
 		<-p.Done
 		p.logger.Debug("pipe closed")
 	}
 	return nil
+}
+
+// closeInput closes the input channel safely using sync.Once.
+// This can be called by producer goroutines when they're done.
+func (p *Pipe) closeInput() {
+	p.closeOnce.Do(func() {
+		close(p.Input)
+	})
 }
 
 // IsClosed returns true if the pipe is closed.
@@ -240,7 +257,8 @@ func (s *Stream) StartFromReader(reader io.Reader) {
 	// Goroutine 1: Parse and transform provider events
 	go func() {
 		defer s.wg.Done()
-		defer close(s.pipe.Input)
+		// Close input when done to signal the pipe that no more data is coming
+		defer s.pipe.closeInput()
 
 		eventCount := 0
 		for {

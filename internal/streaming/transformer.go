@@ -139,16 +139,28 @@ func TransformStream(parser *Parser, transformer *Transformer, output chan<- *Ch
 		event, err := parser.Next()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				done <- nil
+				// Non-blocking send to prevent deadlock if done channel is full
+				select {
+				case done <- nil:
+				default:
+				}
 				return
 			}
-			done <- err
+			// Non-blocking send to prevent deadlock if done channel is full
+			select {
+			case done <- err:
+			default:
+			}
 			return
 		}
 
 		chunk, err := transformer.Transform(event)
 		if err != nil {
-			done <- err
+			// Non-blocking send to prevent deadlock if done channel is full
+			select {
+			case done <- err:
+			default:
+			}
 			return
 		}
 
