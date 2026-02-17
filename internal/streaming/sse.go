@@ -9,11 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"radgateway/internal/logger"
 )
 
 // Event represents a single SSE event.
@@ -29,12 +32,14 @@ type Parser struct {
 	reader  *bufio.Reader
 	event   Event
 	scratch bytes.Buffer
+	logger  *slog.Logger
 }
 
 // NewParser creates a new SSE parser from an io.Reader.
 func NewParser(r io.Reader) *Parser {
 	return &Parser{
 		reader: bufio.NewReader(r),
+		logger: logger.WithComponent("streaming"),
 	}
 }
 
@@ -52,11 +57,13 @@ func (p *Parser) Next() (Event, error) {
 				// Process remaining data before EOF
 				if p.scratch.Len() > 0 || p.event.ID != "" || p.event.Event != "" || hasFields {
 					p.event.Data = p.scratch.String()
+					p.logger.Debug("SSE event parsed at EOF", "event_id", p.event.ID, "event_type", p.event.Event)
 					return p.event, nil
 				}
 				// Empty stream or just whitespace/comments
 				return Event{}, io.EOF
 			}
+			p.logger.Error("read error from SSE stream", err)
 			return Event{}, err
 		}
 
@@ -69,6 +76,7 @@ func (p *Parser) Next() (Event, error) {
 		if len(line) == 0 {
 			if p.scratch.Len() > 0 || p.event.ID != "" || p.event.Event != "" || hasFields {
 				p.event.Data = p.scratch.String()
+				p.logger.Debug("SSE event parsed", "event_id", p.event.ID, "event_type", p.event.Event, "data_len", len(p.event.Data))
 				return p.event, nil
 			}
 			// Otherwise, continue reading for next event
@@ -82,6 +90,7 @@ func (p *Parser) Next() (Event, error) {
 
 		// Parse field
 		if err := p.parseField(line); err != nil {
+			p.logger.Error("parse field error", err, "line", string(line))
 			return Event{}, err
 		}
 		hasFields = true
@@ -139,6 +148,7 @@ type Writer struct {
 	flusher http.Flusher
 	mu      sync.Mutex
 	closed  bool
+	logger  *slog.Logger
 }
 
 // NewWriter creates a new SSE writer from an http.ResponseWriter.
@@ -160,9 +170,13 @@ func NewWriter(w http.ResponseWriter) (*Writer, error) {
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
+	log := logger.WithComponent("streaming")
+	log.Debug("SSE writer initialized")
+
 	return &Writer{
 		w:       w,
 		flusher: flusher,
+		logger:  log,
 	}, nil
 }
 
@@ -206,10 +220,12 @@ func (w *Writer) WriteEvent(event Event) error {
 
 	_, err := w.w.Write([]byte(buf.String()))
 	if err != nil {
+		w.logger.Error("write event error", err, "event_id", event.ID, "event_type", event.Event)
 		return fmt.Errorf("write event: %w", err)
 	}
 
 	w.flusher.Flush()
+	w.logger.Debug("SSE event written", "event_id", event.ID, "event_type", event.Event, "data_len", len(event.Data))
 	return nil
 }
 
@@ -242,6 +258,7 @@ func (w *Writer) Close() error {
 	defer w.mu.Unlock()
 
 	w.closed = true
+	w.logger.Debug("SSE writer closed")
 	return nil
 }
 
@@ -266,6 +283,7 @@ type Client struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	done   chan struct{}
+	logger *slog.Logger
 }
 
 // NewClient creates a new SSE client connection.
@@ -276,18 +294,23 @@ func NewClient(w http.ResponseWriter, r *http.Request) (*Client, error) {
 	}
 
 	ctx, cancel := context.WithCancel(r.Context())
+	log := logger.WithComponent("streaming")
 
 	c := &Client{
 		writer: writer,
 		ctx:    ctx,
 		cancel: cancel,
 		done:   make(chan struct{}),
+		logger: log,
 	}
+
+	log.Debug("SSE client connected")
 
 	// Watch for client disconnect
 	go func() {
 		select {
 		case <-r.Context().Done():
+			log.Debug("SSE client request context done, closing")
 			c.Close()
 		case <-ctx.Done():
 		}
@@ -300,9 +323,14 @@ func NewClient(w http.ResponseWriter, r *http.Request) (*Client, error) {
 func (c *Client) Send(event Event) error {
 	select {
 	case <-c.ctx.Done():
+		c.logger.Debug("send skipped: client context done", "event_id", event.ID)
 		return c.ctx.Err()
 	default:
-		return c.writer.WriteEvent(event)
+		if err := c.writer.WriteEvent(event); err != nil {
+			c.logger.Error("send event failed", err, "event_id", event.ID)
+			return err
+		}
+		return nil
 	}
 }
 
@@ -318,9 +346,15 @@ func (c *Client) Keepalive() error {
 
 // Close closes the client connection.
 func (c *Client) Close() error {
+	c.logger.Debug("closing SSE client connection")
 	c.cancel()
 	close(c.done)
-	return c.writer.Close()
+	err := c.writer.Close()
+	if err != nil {
+		c.logger.Error("error closing writer", err)
+	}
+	c.logger.Debug("SSE client connection closed")
+	return err
 }
 
 // Done returns a channel that's closed when the client disconnects.
