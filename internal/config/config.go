@@ -1,9 +1,14 @@
 package config
 
 import (
+	"context"
 	"os"
 	"strconv"
 	"strings"
+	"time"
+
+	"radgateway/internal/logger"
+	"radgateway/internal/secrets"
 )
 
 type Candidate struct {
@@ -20,12 +25,39 @@ type Config struct {
 }
 
 func Load() Config {
+	log := logger.WithComponent("config")
+
+	// Initialize Infisical client if token available
+	infisicalCfg := secrets.LoadConfig()
+	var secretClient *secrets.Client
+	var err error
+
+	if infisicalCfg.Token != "" {
+		secretClient, err = secrets.NewClient(infisicalCfg)
+		if err != nil {
+			log.Warn("Failed to initialize Infisical client, falling back to env vars", "error", err)
+		} else {
+			// Test connectivity
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := secretClient.Health(ctx); err != nil {
+				log.Warn("Infisical health check failed, falling back to env vars", "error", err)
+				secretClient = nil
+			} else {
+				log.Info("Connected to Infisical for secrets management")
+			}
+		}
+	}
+
 	addr := getenv("RAD_LISTEN_ADDR", ":8090")
 	retryBudget := getenvInt("RAD_RETRY_BUDGET", 2)
 
+	// Try to load API keys from Infisical if available
+	apiKeys := loadKeys(secretClient)
+
 	return Config{
 		ListenAddr:  addr,
-		APIKeys:     loadKeys(),
+		APIKeys:     apiKeys,
 		ModelRoutes: loadModelRoutes(),
 		RetryBudget: retryBudget,
 	}
@@ -40,11 +72,32 @@ func (c Config) Snapshot() map[string]any {
 	}
 }
 
-func loadKeys() map[string]string {
+func loadKeys(client *secrets.Client) map[string]string {
+	log := logger.WithComponent("config")
+
+	// If Infisical client is available, try to fetch keys from there
+	if client != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		keys, err := client.GetSecret(ctx, "api_keys")
+		if err == nil && keys != "" {
+			log.Info("Loaded API keys from Infisical")
+			return parseKeys(keys)
+		}
+		log.Warn("Failed to load API keys from Infisical, falling back to env vars", "error", err)
+	}
+
+	// Fall back to environment variable
 	raw := strings.TrimSpace(os.Getenv("RAD_API_KEYS"))
 	if raw == "" {
 		return map[string]string{}
 	}
+	return parseKeys(raw)
+}
+
+// parseKeys parses comma-separated key:value pairs
+func parseKeys(raw string) map[string]string {
 	out := map[string]string{}
 	parts := strings.Split(raw, ",")
 	for _, item := range parts {

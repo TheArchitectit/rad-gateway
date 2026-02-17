@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"sort"
 
+	"log/slog"
+
+	"radgateway/internal/logger"
 	"radgateway/internal/models"
 	"radgateway/internal/provider"
 )
@@ -25,10 +28,16 @@ type Router struct {
 	registry    *provider.Registry
 	routeTable  map[string][]provider.Candidate
 	retryBudget int
+	log         *slog.Logger
 }
 
 func New(registry *provider.Registry, routeTable map[string][]provider.Candidate, retryBudget int) *Router {
-	return &Router{registry: registry, routeTable: routeTable, retryBudget: retryBudget}
+	return &Router{
+		registry:    registry,
+		routeTable:  routeTable,
+		retryBudget: retryBudget,
+		log:         logger.WithComponent("router"),
+	}
 }
 
 func (r *Router) Dispatch(ctx context.Context, req models.ProviderRequest) (Result, error) {

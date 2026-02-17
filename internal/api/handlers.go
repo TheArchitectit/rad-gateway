@@ -9,7 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"log/slog"
+
 	"radgateway/internal/core"
+	"radgateway/internal/logger"
 	"radgateway/internal/models"
 	"radgateway/internal/streaming"
 )
@@ -24,10 +27,14 @@ type StreamAdapter interface {
 type Handlers struct {
 	gateway       *core.Gateway
 	streamHandler *streaming.StreamHandler
+	log           *slog.Logger
 }
 
 func NewHandlers(g *core.Gateway) *Handlers {
-	h := &Handlers{gateway: g}
+	h := &Handlers{
+		gateway: g,
+		log:     logger.WithComponent("api"),
+	}
 
 	// Initialize stream handler with transformer factory
 	h.streamHandler = streaming.NewStreamHandler(func(provider, model string) *streaming.Transformer {
@@ -111,7 +118,7 @@ func (h *Handlers) handleStreamingChatCompletion(w http.ResponseWriter, r *http.
 	// Wait for completion
 	if err := stream.Wait(); err != nil {
 		// Log error - the stream is already handling client communication
-		fmt.Printf("streaming error: %v\n", err)
+		h.log.Error("streaming error", "error", err.Error(), "model", req.Model)
 	}
 }
 
