@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"sync"
+	"time"
 
 	"log/slog"
 
@@ -72,7 +73,7 @@ func NewService(cfg Config) (*Service, error) {
 		}
 
 		if cfg.WorkerInterval != "" {
-			duration, err := parseDuration(cfg.WorkerInterval)
+			duration, err := time.ParseDuration(cfg.WorkerInterval)
 			if err != nil {
 				log.Warn("invalid worker interval, using default", "interval", cfg.WorkerInterval, "error", err.Error())
 			} else {
@@ -171,7 +172,7 @@ func (s *Service) GetAPIHandler() *APIHandler {
 }
 
 // RegisterRoutes registers cost API endpoints with the provided mux.
-func (s *Service) RegisterRoutes(mux interface{ HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) }) {
+func (s *Service) RegisterRoutes(mux HTTPMux) {
 	s.api.Register(mux)
 }
 
@@ -296,13 +297,3 @@ type ServiceError struct {
 func (e *ServiceError) Error() string {
 	return e.msg
 }
-
-// parseDuration parses a duration string, returning an error if invalid.
-func parseDuration(s string) (Duration, error) {
-	d, err := time.ParseDuration(s)
-	return d, err
-}
-
-// Import needed types
-import "net/http"
-import "time"
