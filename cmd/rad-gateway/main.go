@@ -69,26 +69,56 @@ func main() {
 	router := routing.New(registry, routeTable, cfg.RetryBudget)
 	gateway := core.New(router, usageSink, traceStore)
 
+	// Create separate muxes for different endpoint types
+	// This allows applying different authentication mechanisms
+	publicMux := http.NewServeMux()
 	apiMux := http.NewServeMux()
+	adminMux := http.NewServeMux()
+
+	// Register API handlers (OpenAI-compatible endpoints)
 	api.NewHandlers(gateway).Register(apiMux)
-	admin.NewHandlers(cfg, usageSink, traceStore).Register(apiMux)
+
+	// Register admin handlers
+	admin.NewHandlers(cfg, usageSink, traceStore).Register(adminMux)
 
 	// Initialize SSE handler for real-time events
-	// Use HTTPHealthChecker from provider package for health updates
 	healthChecker := provider.NewHTTPHealthChecker(5 * time.Second)
 	sseHandler := api.NewSSEHandler(healthChecker)
-	sseHandler.RegisterRoutes(apiMux)
+	sseHandler.RegisterRoutes(adminMux) // Register on admin mux for JWT auth
 
-	// Initialize JWT authentication
+	// Initialize JWT authentication (public endpoints)
 	jwtManager := auth.NewJWTManager(auth.DefaultConfig())
 	authHandler := api.NewAuthHandler(jwtManager, userRepo)
-	authHandler.RegisterRoutes(apiMux)
+	authHandler.RegisterRoutes(publicMux)
 
-	auth := middleware.NewAuthenticator(cfg.APIKeys)
-	protectedMux := withConditionalAuth(apiMux, auth)
-	sseProtectedMux := withSSEAuth(apiMux, auth)
-	handler := middleware.WithRequestContext(sseProtectedMux)
-	// Add CORS support for admin UI and external clients
+	// Create authenticators
+	apiKeyAuth := middleware.NewAuthenticator(cfg.APIKeys)
+
+	// Combine muxes with appropriate authentication
+	// Order matters: more specific paths first
+	combinedMux := http.NewServeMux()
+
+	// Public endpoints (no auth required)
+	combinedMux.Handle("/v1/auth/", http.StripPrefix("/v1/auth", publicMux))
+	combinedMux.Handle("/health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok"}`))
+	}))
+
+	// Admin endpoints require JWT authentication
+	jwtMiddleware := auth.NewMiddleware(jwtManager)
+	adminHandler := jwtMiddleware.Authenticate(adminMux)
+	combinedMux.Handle("/v0/admin/", http.StripPrefix("/v0/admin", adminHandler))
+	combinedMux.Handle("/v0/management/", http.StripPrefix("/v0/management", adminHandler))
+
+	// API endpoints require API key authentication (except health)
+	apiHandler := apiKeyAuth.Require(apiMux)
+	combinedMux.Handle("/v1/", http.StripPrefix("/v1", apiHandler))
+
+	// Apply global middleware
+	handler := middleware.WithRequestContext(combinedMux)
+	handler = middleware.WithSecurityHeaders(handler) // Add security headers
 	handler = middleware.WithCORS(handler)
 
 	log.Info("rad-gateway starting", "addr", cfg.ListenAddr)
@@ -105,41 +135,6 @@ func main() {
 		log.Error("server failed to start", "error", err.Error())
 		return
 	}
-}
-
-func withConditionalAuth(next *http.ServeMux, auth *middleware.Authenticator) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Only /health endpoint is public (for load balancers/probes)
-		// /v0/management/ endpoints require authentication
-		if r.URL.Path == "/health" {
-			next.ServeHTTP(w, r)
-			return
-		}
-		auth.Require(next).ServeHTTP(w, r)
-	})
-}
-
-func withSSEAuth(next *http.ServeMux, auth *middleware.Authenticator) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Health endpoint is public
-		if r.URL.Path == "/health" {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		// SSE endpoints support token via query parameter (EventSource limitation)
-		if startsWith(r.URL.Path, "/v0/admin/events") {
-			auth.RequireWithTokenAuth(next).ServeHTTP(w, r)
-			return
-		}
-
-		// All other endpoints require header-based auth
-		auth.Require(next).ServeHTTP(w, r)
-	})
-}
-
-func startsWith(path, prefix string) bool {
-	return len(path) >= len(prefix) && path[:len(prefix)] == prefix
 }
 
 func getenv(key, fallback string) string {
