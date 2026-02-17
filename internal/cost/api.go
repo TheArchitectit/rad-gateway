@@ -25,8 +25,13 @@ func NewAPIHandler(aggregator *Aggregator) *APIHandler {
 	}
 }
 
+// HTTPMux is the interface for registering HTTP handlers.
+type HTTPMux interface {
+	HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request))
+}
+
 // Register registers the cost API endpoints.
-func (h *APIHandler) Register(mux *http.ServeMux) {
+func (h *APIHandler) Register(mux HTTPMux) {
 	mux.HandleFunc("/v0/costs/summary", h.getCostSummary)
 	mux.HandleFunc("/v0/costs/by-model", h.getCostByModel)
 	mux.HandleFunc("/v0/costs/by-provider", h.getCostByProvider)
