@@ -1,0 +1,953 @@
+openapi: 3.0.3
+info:
+  title: RAD Gateway RBAC API
+  description: |
+    Role-Based Access Control API for RAD Gateway.
+
+    Manages API keys, roles, permissions, and access control policies.
+    Supports tag-based access control for multi-tenant scenarios.
+
+    ## Security Model
+
+    - API Keys are the primary authentication mechanism
+    - Roles define sets of permissions
+    - Tags enable resource-level access control (env:production, team:platform)
+    - Permissions follow format: `resource:action` (e.g., `models:read`, `billing:write`)
+
+    ## Tag-Based Access Control
+
+    Tags use hierarchical `category:value` format:
+    - `env:production` - Production environment access
+    - `team:platform` - Platform team access
+    - `project:customer-a` - Customer-specific access
+
+    ## Security
+    All endpoints require administrative API key authentication.
+
+  version: 0.1.0
+  contact:
+    name: RAD Gateway Security Team
+    email: team-charlie@radgateway.local
+
+servers:
+  - url: http://172.16.30.45:8090
+    description: radgateway01 deployment
+  - url: http://localhost:8090
+    description: Local development
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: API Keys
+    description: API key lifecycle management
+  - name: Roles
+    description: Role and permission definitions
+  - name: Permissions
+    description: Permission catalog and validation
+  - name: Tags
+    description: Tag-based access control
+
+paths:
+  /v0/auth/keys:
+    get:
+      tags:
+        - API Keys
+      summary: List API keys
+      description: |
+        Returns paginated list of API keys (secrets masked).
+        Supports filtering by tags, status, and creation date.
+      operationId: listApiKeys
+      parameters:
+        - name: status
+          in: query
+          description: Filter by key status
+          schema:
+            type: string
+            enum: [active, inactive, revoked, expired]
+        - name: tag
+          in: query
+          description: Filter by tag (category:value)
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          description: Pagination cursor
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Results per page (max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+    post:
+      tags:
+        - API Keys
+      summary: Create API key
+      description: |
+        Creates a new API key with specified roles and tags.
+        Returns the full key (including secret) only on creation.
+      operationId: createApiKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiKeyRequest'
+      responses:
+        '201':
+          description: API key created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyWithSecret'
+          headers:
+            Location:
+              description: URL of the created resource
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /v0/auth/keys/{keyId}:
+    parameters:
+      - name: keyId
+        in: path
+        required: true
+        description: API key identifier
+        schema:
+          type: string
+
+    get:
+      tags:
+        - API Keys
+      summary: Get API key
+      description: Returns API key details (secret masked).
+      operationId: getApiKey
+      responses:
+        '200':
+          description: API key details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKey'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    put:
+      tags:
+        - API Keys
+      summary: Update API key
+      description: |
+        Updates API key metadata, roles, and tags.
+        Cannot update the secret - use rotate endpoint.
+      operationId: updateApiKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApiKeyRequest'
+      responses:
+        '200':
+          description: API key updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKey'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      tags:
+        - API Keys
+      summary: Revoke API key
+      description: |
+        Permanently revokes an API key. Key cannot be used
+        after revocation. Use for security incidents or offboarding.
+      operationId: revokeApiKey
+      responses:
+        '204':
+          description: Key revoked
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v0/auth/keys/{keyId}/rotate:
+    parameters:
+      - name: keyId
+        in: path
+        required: true
+        description: API key identifier
+        schema:
+          type: string
+
+    post:
+      tags:
+        - API Keys
+      summary: Rotate API key
+      description: |
+        Generates a new secret for the API key. Old secret remains
+        valid for a grace period (configurable, default 24h).
+        Returns new secret immediately.
+      operationId: rotateApiKey
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                grace_period_hours:
+                  type: integer
+                  description: Hours old secret remains valid
+                  minimum: 0
+                  maximum: 168
+                  default: 24
+      responses:
+        '200':
+          description: Key rotated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keyId:
+                    type: string
+                  newSecret:
+                    type: string
+                  gracePeriodEnd:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v0/auth/keys/{keyId}/usage:
+    parameters:
+      - name: keyId
+        in: path
+        required: true
+        description: API key identifier
+        schema:
+          type: string
+
+    get:
+      tags:
+        - API Keys
+      summary: Get API key usage
+      description: |
+        Returns usage statistics for a specific API key.
+      operationId: getKeyUsage
+      parameters:
+        - name: period
+          in: query
+          description: Time period for aggregation
+          schema:
+            type: string
+            enum: [hour, day, week, month]
+            default: day
+        - name: start_date
+          in: query
+          description: Start date (ISO 8601)
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: End date (ISO 8601)
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Usage statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyUsageReport'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /v0/auth/roles:
+    get:
+      tags:
+        - Roles
+      summary: List roles
+      description: Returns all configured roles.
+      operationId: listRoles
+      parameters:
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of roles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+    post:
+      tags:
+        - Roles
+      summary: Create role
+      description: |
+        Creates a new role with specified permissions.
+        Role ID must be URL-safe and unique.
+      operationId: createRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoleRequest'
+      responses:
+        '201':
+          description: Role created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /v0/auth/roles/{roleId}:
+    parameters:
+      - name: roleId
+        in: path
+        required: true
+        description: Role identifier
+        schema:
+          type: string
+
+    get:
+      tags:
+        - Roles
+      summary: Get role
+      description: Returns role details.
+      operationId: getRole
+      responses:
+        '200':
+          description: Role details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    put:
+      tags:
+        - Roles
+      summary: Update role
+      description: |
+        Updates role permissions and metadata.
+        Changes apply to all keys with this role.
+      operationId: updateRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoleRequest'
+      responses:
+        '200':
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      tags:
+        - Roles
+      summary: Delete role
+      description: |
+        Deletes a role. Role must not be assigned to any API keys.
+        Use force=true to remove role from all keys before deletion.
+      operationId: deleteRole
+      parameters:
+        - name: force
+          in: query
+          description: Force delete even if assigned
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '204':
+          description: Role deleted
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Role in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v0/auth/permissions:
+    get:
+      tags:
+        - Permissions
+      summary: List available permissions
+      description: |
+        Returns all available permissions in the system.
+        Organized by resource type.
+      operationId: listPermissions
+      responses:
+        '200':
+          description: Permission catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionCatalog'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /v0/auth/check:
+    post:
+      tags:
+        - Permissions
+      summary: Check permissions
+      description: |
+        Verifies if an API key has specified permissions.
+        Used for client-side permission checking.
+      operationId: checkPermissions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermissionCheckRequest'
+      responses:
+        '200':
+          description: Permission check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionCheckResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /v0/auth/tags:
+    get:
+      tags:
+        - Tags
+      summary: List tags
+      description: |
+        Returns all tags used in the system.
+        Includes usage counts per tag.
+      operationId: listTags
+      parameters:
+        - name: category
+          in: query
+          description: Filter by tag category
+          schema:
+            type: string
+            enum: [env, team, project, region, tier]
+      responses:
+        '200':
+          description: List of tags
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Admin API key JWT token
+
+  schemas:
+    ApiKey:
+      type: object
+      required:
+        - id
+        - name
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          description: Unique key identifier
+          example: "key_01HQC5Q3B0Q0XM5SJ3J4Z5J3N5"
+        name:
+          type: string
+          description: Human-readable name
+          example: "Production Service Account"
+        description:
+          type: string
+          description: Optional description
+        status:
+          type: string
+          enum: [active, inactive, revoked, expired]
+        roles:
+          type: array
+          items:
+            type: string
+          description: Assigned role IDs
+          example: ["service", "billing:read"]
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+          description: Resource access tags
+        lastUsedAt:
+          type: string
+          format: date-time
+          description: Last request timestamp
+        expiresAt:
+          type: string
+          format: date-time
+          description: Key expiration (null for no expiry)
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ApiKeyWithSecret:
+      allOf:
+        - $ref: '#/components/schemas/ApiKey'
+        - type: object
+          required:
+            - secret
+          properties:
+            secret:
+              type: string
+              description: API key secret (shown once)
+              example: "sk-rad-abc123xyz789"
+
+    ApiKeyListResponse:
+      type: object
+      required:
+        - keys
+        - pagination
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiKey'
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+
+    CreateApiKeyRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: '^[a-zA-Z0-9_-]+$'
+        description:
+          type: string
+          maxLength: 500
+        roles:
+          type: array
+          items:
+            type: string
+          description: Role IDs to assign
+          default: []
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+          default: []
+        expiresAt:
+          type: string
+          format: date-time
+          description: Optional expiration
+
+    UpdateApiKeyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 500
+        status:
+          type: string
+          enum: [active, inactive]
+        roles:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        expiresAt:
+          type: string
+          format: date-time
+
+    Role:
+      type: object
+      required:
+        - id
+        - name
+        - permissions
+        - createdAt
+      properties:
+        id:
+          type: string
+          description: URL-safe role identifier
+          example: "admin"
+        name:
+          type: string
+          description: Human-readable name
+          example: "Administrator"
+        description:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+          description: Permission strings (resource:action)
+          example: ["*:*", "admin:full"]
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+          description: Default tags for keys with this role
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    RoleListResponse:
+      type: object
+      properties:
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+
+    CreateRoleRequest:
+      type: object
+      required:
+        - id
+        - name
+        - permissions
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z0-9_-]+$'
+          minLength: 1
+          maxLength: 64
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 500
+        permissions:
+          type: array
+          items:
+            type: string
+            pattern: '^[a-z]+:[a-z*]+$'
+          minItems: 1
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+
+    UpdateRoleRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 500
+        permissions:
+          type: array
+          items:
+            type: string
+            pattern: '^[a-z]+:[a-z*]+$'
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+
+    PermissionCatalog:
+      type: object
+      properties:
+        resources:
+          type: array
+          items:
+            type: object
+            properties:
+              resource:
+                type: string
+              actions:
+                type: array
+                items:
+                  type: string
+              description:
+                type: string
+
+    PermissionCheckRequest:
+      type: object
+      required:
+        - keyId
+        - permissions
+      properties:
+        keyId:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+          minItems: 1
+        resource:
+          type: string
+          description: Resource to check against (for tag-based)
+
+    PermissionCheckResponse:
+      type: object
+      required:
+        - keyId
+        - authorized
+      properties:
+        keyId:
+          type: string
+        authorized:
+          type: boolean
+        permissions:
+          type: object
+          additionalProperties:
+            type: boolean
+
+    Tag:
+      type: object
+      required:
+        - category
+        - value
+      properties:
+        category:
+          type: string
+          enum: [env, team, project, region, tier, custom]
+          description: Tag category
+        value:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[a-z0-9_-]+$'
+          description: Tag value
+
+    TagListResponse:
+      type: object
+      properties:
+        tags:
+          type: array
+          items:
+            type: object
+            properties:
+              category:
+                type: string
+              value:
+                type: string
+              usageCount:
+                type: integer
+
+    KeyUsageReport:
+      type: object
+      properties:
+        keyId:
+          type: string
+        period:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        totalRequests:
+          type: integer
+        totalTokens:
+          type: integer
+        totalCost:
+          type: number
+          format: float
+        dailyBreakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              requests:
+                type: integer
+              tokens:
+                type: integer
+              cost:
+                type: number
+
+    PaginationInfo:
+      type: object
+      required:
+        - has_more
+      properties:
+        cursor:
+          type: string
+        has_more:
+          type: boolean
+        total_count:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+            request_id:
+              type: string
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ForbiddenError:
+      description: Permission denied
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ValidationError:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ConflictError:
+      description: Resource conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

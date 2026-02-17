@@ -30,9 +30,29 @@ func NewHandlers(cfg config.Config, usageSink usage.Sink, traceStore *trace.Stor
 }
 
 func (h *Handlers) Register(mux *http.ServeMux) {
+	// Legacy management endpoints
 	mux.HandleFunc("/v0/management/config", h.getConfig)
 	mux.HandleFunc("/v0/management/usage", h.getUsage)
 	mux.HandleFunc("/v0/management/traces", h.getTraces)
+
+	// New admin API endpoints
+	// Projects / Workspaces
+	NewProjectHandler().RegisterRoutes(mux)
+
+	// API Keys
+	NewAPIKeyHandler().RegisterRoutes(mux)
+
+	// Usage
+	NewUsageHandler().RegisterRoutes(mux)
+
+	// Costs
+	NewCostHandler().RegisterRoutes(mux)
+
+	// Quotas
+	NewQuotaHandler().RegisterRoutes(mux)
+
+	// Providers
+	NewProviderHandler().RegisterRoutes(mux)
 }
 
 func (h *Handlers) getConfig(w http.ResponseWriter, r *http.Request) {

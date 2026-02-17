@@ -10,6 +10,7 @@ import (
 	"log/slog"
 
 	"radgateway/internal/logger"
+	"radgateway/internal/rbac"
 )
 
 type ctxKey string
@@ -129,4 +130,73 @@ func newID() string {
 	b := make([]byte, 8)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// RequirePermission is an RBAC middleware wrapper that checks for specific permissions.
+// It can be used with chi router or standard http.Handler.
+func RequirePermission(perm rbac.Permission) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user := rbac.GetUserContext(r.Context())
+			if user == nil {
+				http.Error(w, `{"error":{"message":"authentication required","code":401}}`, http.StatusUnauthorized)
+				return
+			}
+
+			if !user.CheckPermission(perm) {
+				http.Error(w, `{"error":{"message":"insufficient permissions","code":403}}`, http.StatusForbidden)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RequireRole is an RBAC middleware wrapper that checks for minimum role.
+func RequireRole(minRole rbac.Role) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user := rbac.GetUserContext(r.Context())
+			if user == nil {
+				http.Error(w, `{"error":{"message":"authentication required","code":401}}`, http.StatusUnauthorized)
+				return
+			}
+
+			if !user.Role.IsAtLeast(minRole) && !user.IsAdmin {
+				http.Error(w, `{"error":{"message":"insufficient role privileges","code":403}}`, http.StatusForbidden)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RequireAdmin ensures only admins can access the resource.
+func RequireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user := rbac.GetUserContext(r.Context())
+		if user == nil {
+			http.Error(w, `{"error":{"message":"authentication required","code":401}}`, http.StatusUnauthorized)
+			return
+		}
+
+		if !user.IsAdmin {
+			http.Error(w, `{"error":{"message":"admin access required","code":403}}`, http.StatusForbidden)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// GetUserContext retrieves the RBAC user context from request context.
+func GetUserContext(ctx context.Context) *rbac.UserContext {
+	return rbac.GetUserContext(ctx)
+}
+
+// IsAdmin checks if the user in context is an admin.
+func IsAdmin(ctx context.Context) bool {
+	return rbac.IsAdmin(ctx)
 }
