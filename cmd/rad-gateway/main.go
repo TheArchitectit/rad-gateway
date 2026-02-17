@@ -65,7 +65,9 @@ func main() {
 
 func withConditionalAuth(next *http.ServeMux, auth *middleware.Authenticator) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/health" || startsWith(r.URL.Path, "/v0/management/") {
+		// Only /health endpoint is public (for load balancers/probes)
+		// /v0/management/ endpoints require authentication
+		if r.URL.Path == "/health" {
 			next.ServeHTTP(w, r)
 			return
 		}
