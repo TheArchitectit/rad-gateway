@@ -12,6 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
+
+	"radgateway/internal/logger"
 	"radgateway/internal/models"
 )
 
@@ -35,12 +38,13 @@ type Config struct {
 
 // Adapter implements the provider.Adapter interface for OpenAI-compatible APIs.
 type Adapter struct {
-	config       Config
-	token        string
-	reqTransform *RequestTransformer
-	respTransform *ResponseTransformer
+	config          Config
+	token           string
+	reqTransform    *RequestTransformer
+	respTransform   *ResponseTransformer
 	streamTransform *StreamTransformer
-	httpClient   *http.Client
+	httpClient      *http.Client
+	log             *slog.Logger
 }
 
 // AdapterOption configures the Adapter.
@@ -93,6 +97,7 @@ func NewAdapter(apiKey string, opts ...AdapterOption) *Adapter {
 		reqTransform:    NewRequestTransformer(),
 		respTransform:   NewResponseTransformer(),
 		streamTransform: NewStreamTransformer(),
+		log:             logger.WithComponent("openai"),
 	}
 
 	for _, opt := range opts {
@@ -180,6 +185,7 @@ func (a *Adapter) executeNonStreaming(ctx context.Context, req OpenAIRequest) (m
 		resp, err = a.httpClient.Do(httpReq)
 		if err != nil {
 			lastErr = fmt.Errorf("http request failed: %w", err)
+			a.log.Warn("openai: http request failed, will retry", "attempt", attempt+1, "error", err.Error())
 			continue // Retry on network errors
 		}
 
@@ -188,6 +194,7 @@ func (a *Adapter) executeNonStreaming(ctx context.Context, req OpenAIRequest) (m
 			resp.StatusCode == http.StatusForbidden ||
 			resp.StatusCode == http.StatusBadRequest {
 			defer resp.Body.Close()
+			a.log.Error("openai: request failed with client error", "status", resp.StatusCode)
 			return a.handleErrorResponse(resp)
 		}
 
@@ -195,6 +202,7 @@ func (a *Adapter) executeNonStreaming(ctx context.Context, req OpenAIRequest) (m
 		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
 			resp.Body.Close()
 			lastErr = fmt.Errorf("server error (status %d)", resp.StatusCode)
+			a.log.Warn("openai: server error, will retry", "attempt", attempt+1, "status", resp.StatusCode)
 			continue
 		}
 
@@ -202,6 +210,7 @@ func (a *Adapter) executeNonStreaming(ctx context.Context, req OpenAIRequest) (m
 	}
 
 	if resp == nil {
+		a.log.Error("openai: all retries exhausted", "error", lastErr.Error())
 		return models.ProviderResult{}, fmt.Errorf("all retries exhausted: %w", lastErr)
 	}
 

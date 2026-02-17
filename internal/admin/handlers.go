@@ -5,7 +5,10 @@ import (
 	"net/http"
 	"strconv"
 
+	"log/slog"
+
 	"radgateway/internal/config"
+	"radgateway/internal/logger"
 	"radgateway/internal/trace"
 	"radgateway/internal/usage"
 )
@@ -14,10 +17,16 @@ type Handlers struct {
 	cfg   config.Config
 	usage usage.Sink
 	trace *trace.Store
+	log   *slog.Logger
 }
 
 func NewHandlers(cfg config.Config, usageSink usage.Sink, traceStore *trace.Store) *Handlers {
-	return &Handlers{cfg: cfg, usage: usageSink, trace: traceStore}
+	return &Handlers{
+		cfg:   cfg,
+		usage: usageSink,
+		trace: traceStore,
+		log:   logger.WithComponent("admin"),
+	}
 }
 
 func (h *Handlers) Register(mux *http.ServeMux) {
@@ -28,27 +37,33 @@ func (h *Handlers) Register(mux *http.ServeMux) {
 
 func (h *Handlers) getConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		h.log.Warn("admin: method not allowed", "path", r.URL.Path, "method", r.Method)
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
+	h.log.Debug("admin: config accessed", "path", r.URL.Path)
 	writeJSON(w, http.StatusOK, h.cfg.Snapshot())
 }
 
 func (h *Handlers) getUsage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		h.log.Warn("admin: method not allowed", "path", r.URL.Path, "method", r.Method)
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
 	limit := readLimit(r, 50)
+	h.log.Debug("admin: usage accessed", "path", r.URL.Path, "limit", limit)
 	writeJSON(w, http.StatusOK, map[string]any{"data": h.usage.List(limit), "total": limit})
 }
 
 func (h *Handlers) getTraces(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		h.log.Warn("admin: method not allowed", "path", r.URL.Path, "method", r.Method)
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
 	limit := readLimit(r, 50)
+	h.log.Debug("admin: traces accessed", "path", r.URL.Path, "limit", limit)
 	writeJSON(w, http.StatusOK, map[string]any{"data": h.trace.List(limit), "total": limit})
 }
 

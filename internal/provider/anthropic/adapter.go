@@ -13,6 +13,9 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
+
+	"radgateway/internal/logger"
 	"radgateway/internal/models"
 )
 
@@ -45,6 +48,7 @@ type Adapter struct {
 	respTransform   *ResponseTransformer
 	streamTransform *StreamTransformer
 	httpClient      *http.Client
+	log             *slog.Logger
 }
 
 // AdapterOption configures the Adapter.
@@ -105,6 +109,7 @@ func NewAdapter(apiKey string, opts ...AdapterOption) *Adapter {
 		reqTransform:    NewRequestTransformer(),
 		respTransform:   NewResponseTransformer(),
 		streamTransform: NewStreamTransformer(),
+		log:             logger.WithComponent("anthropic"),
 	}
 
 	for _, opt := range opts {
@@ -193,6 +198,7 @@ func (a *Adapter) executeNonStreaming(ctx context.Context, req AnthropicRequest)
 		resp, err = a.httpClient.Do(httpReq)
 		if err != nil {
 			lastErr = fmt.Errorf("http request failed: %w", err)
+			a.log.Warn("anthropic: http request failed, will retry", "attempt", attempt+1, "error", err.Error())
 			continue // Retry on network errors
 		}
 
@@ -201,6 +207,7 @@ func (a *Adapter) executeNonStreaming(ctx context.Context, req AnthropicRequest)
 			resp.StatusCode == http.StatusForbidden ||
 			resp.StatusCode == http.StatusBadRequest {
 			defer resp.Body.Close()
+			a.log.Error("anthropic: request failed with client error", "status", resp.StatusCode)
 			return a.handleErrorResponse(resp)
 		}
 
@@ -208,6 +215,7 @@ func (a *Adapter) executeNonStreaming(ctx context.Context, req AnthropicRequest)
 		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
 			resp.Body.Close()
 			lastErr = fmt.Errorf("server error (status %d)", resp.StatusCode)
+			a.log.Warn("anthropic: server error, will retry", "attempt", attempt+1, "status", resp.StatusCode)
 			continue
 		}
 
@@ -215,6 +223,7 @@ func (a *Adapter) executeNonStreaming(ctx context.Context, req AnthropicRequest)
 	}
 
 	if resp == nil {
+		a.log.Error("anthropic: all retries exhausted", "error", lastErr.Error())
 		return models.ProviderResult{}, fmt.Errorf("all retries exhausted: %w", lastErr)
 	}
 
