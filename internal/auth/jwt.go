@@ -41,15 +41,66 @@ type JWTConfig struct {
 }
 
 // DefaultConfig returns a default JWT configuration.
+// In production, JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be set.
 func DefaultConfig() JWTConfig {
-	// In production, these should come from environment variables or secrets manager
+	accessSecret := os.Getenv("JWT_ACCESS_SECRET")
+	refreshSecret := os.Getenv("JWT_REFRESH_SECRET")
+
+	// Warn if using generated secrets (tokens won't persist across restarts)
+	if accessSecret == "" {
+		fmt.Fprintf(os.Stderr, "[SECURITY WARNING] JWT_ACCESS_SECRET not set. Using generated secret - tokens will not persist across restarts.\n")
+		accessSecret = generateSecret()
+	}
+	if refreshSecret == "" {
+		fmt.Fprintf(os.Stderr, "[SECURITY WARNING] JWT_REFRESH_SECRET not set. Using generated secret - tokens will not persist across restarts.\n")
+		refreshSecret = generateSecret()
+	}
+
+	// Validate minimum secret length
+	if len(accessSecret) < 32 {
+		fmt.Fprintf(os.Stderr, "[SECURITY WARNING] JWT_ACCESS_SECRET should be at least 32 characters for security\n")
+	}
+	if len(refreshSecret) < 32 {
+		fmt.Fprintf(os.Stderr, "[SECURITY WARNING] JWT_REFRESH_SECRET should be at least 32 characters for security\n")
+	}
+
 	return JWTConfig{
-		AccessTokenSecret:  []byte(getenv("JWT_ACCESS_SECRET", generateSecret())),
-		RefreshTokenSecret: []byte(getenv("JWT_REFRESH_SECRET", generateSecret())),
+		AccessTokenSecret:  []byte(accessSecret),
+		RefreshTokenSecret: []byte(refreshSecret),
 		AccessTokenExpiry:  15 * time.Minute,
 		RefreshTokenExpiry: 7 * 24 * time.Hour,
 		Issuer:             "rad-gateway",
 	}
+}
+
+// LoadConfig loads JWT configuration from environment with strict validation.
+// Returns an error if required secrets are not configured.
+func LoadConfig() (JWTConfig, error) {
+	accessSecret := os.Getenv("JWT_ACCESS_SECRET")
+	if accessSecret == "" {
+		return JWTConfig{}, fmt.Errorf("JWT_ACCESS_SECRET environment variable is required")
+	}
+
+	refreshSecret := os.Getenv("JWT_REFRESH_SECRET")
+	if refreshSecret == "" {
+		return JWTConfig{}, fmt.Errorf("JWT_REFRESH_SECRET environment variable is required")
+	}
+
+	if len(accessSecret) < 32 {
+		return JWTConfig{}, fmt.Errorf("JWT_ACCESS_SECRET must be at least 32 characters")
+	}
+
+	if len(refreshSecret) < 32 {
+		return JWTConfig{}, fmt.Errorf("JWT_REFRESH_SECRET must be at least 32 characters")
+	}
+
+	return JWTConfig{
+		AccessTokenSecret:  []byte(accessSecret),
+		RefreshTokenSecret: []byte(refreshSecret),
+		AccessTokenExpiry:  15 * time.Minute,
+		RefreshTokenExpiry: 7 * 24 * time.Hour,
+		Issuer:             "rad-gateway",
+	}, nil
 }
 
 // JWTManager handles JWT operations.
