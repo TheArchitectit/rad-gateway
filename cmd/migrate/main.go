@@ -45,7 +45,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anthropics/ RAD Gateway/internal/db"
+	"github.com/anthropics/rad-gateway/internal/db"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -649,16 +649,13 @@ func parseDatabaseURL(url string) (driver, dsn string) {
 	return "sqlite", url
 }
 
-// Helper to extract *sql.DB from PostgresDB (needs to be added to db package)
+// Helper to extract *sql.DB from PostgresDB using the DB() method
 func getPostgresDB(d *db.PostgresDB) *sql.DB {
-	// This requires adding a method to PostgresDB to expose the internal db
-	// For now, we'll need to modify the db package
-	return nil
+	return d.DB()
 }
 
 func getSQLiteDB(d *db.SQLiteDB) *sql.DB {
-	// Same here
-	return nil
+	return d.DB()
 }
 
 func getEnv(key, defaultValue string) string {

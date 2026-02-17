@@ -39,7 +39,7 @@ func (s SlowQuerySeverity) String() string {
 }
 
 // SlowQuery represents a detected slow query with full details.
-type SlowQuery struct {
+type TrackedSlowQuery struct {
 	// Unique identifier (hash of normalized query)
 	ID string
 	// Original SQL query (may be truncated)
@@ -280,7 +280,7 @@ func (l *DefaultSlowQueryLogger) LogWithContext(ctx context.Context, query strin
 	l.dedupMu.Unlock()
 
 	// Create slow query entry
-	slowQuery := &SlowQuery{
+	slowQuery := &TrackedSlowQuery{
 		ID:              queryID,
 		Query:           truncateQuery(query, 2000),
 		NormalizedQuery: normalized,

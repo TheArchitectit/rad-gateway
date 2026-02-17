@@ -8,7 +8,13 @@
 
 import { ApiError, ApiResponse } from '../types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://172.16.30.45:8090';
+// API base URL configuration
+// In development, we use the proxy configured in next.config.js
+// In production, use the actual backend URL
+const isDevelopment = process.env.NODE_ENV === 'development';
+const API_BASE_URL = isDevelopment
+  ? '/api/proxy'  // Uses Next.js rewrites to proxy to backend
+  : (process.env.NEXT_PUBLIC_API_URL || 'http://172.16.30.45:8090');
 
 interface RequestConfig extends RequestInit {
   params?: Record<string, string | number | boolean | undefined>;
