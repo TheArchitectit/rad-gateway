@@ -2,12 +2,15 @@ package main
 
 import (
 	"net/http"
+	"os"
 	"time"
 
 	"radgateway/internal/admin"
 	"radgateway/internal/api"
+	"radgateway/internal/auth"
 	"radgateway/internal/config"
 	"radgateway/internal/core"
+	"radgateway/internal/db"
 	"radgateway/internal/logger"
 	"radgateway/internal/middleware"
 	"radgateway/internal/provider"
@@ -22,6 +25,33 @@ func main() {
 	log := logger.WithComponent("main")
 
 	cfg := config.Load()
+
+	// Initialize database (optional - for auth and persistence)
+	var database db.Database
+	var userRepo db.UserRepository
+	dbDSN := getenv("RAD_DB_DSN", "radgateway.db")
+	dbDriver := getenv("RAD_DB_DRIVER", "sqlite")
+
+	if dbDSN != "" {
+		var err error
+		database, err = db.New(db.Config{
+			Driver: dbDriver,
+			DSN:    dbDSN,
+		})
+		if err != nil {
+			log.Warn("database connection failed, running without persistence", "error", err.Error())
+		} else {
+			if err := database.RunMigrations(); err != nil {
+				log.Warn("database migrations failed", "error", err.Error())
+			} else {
+				log.Info("database connected")
+				userRepo = database.Users()
+			}
+		}
+		if database != nil {
+			defer database.Close()
+		}
+	}
 
 	usageSink := usage.NewInMemory(2000)
 	traceStore := trace.NewStore(4000)
@@ -43,9 +73,23 @@ func main() {
 	api.NewHandlers(gateway).Register(apiMux)
 	admin.NewHandlers(cfg, usageSink, traceStore).Register(apiMux)
 
+	// Initialize SSE handler for real-time events
+	// Use HTTPHealthChecker from provider package for health updates
+	healthChecker := provider.NewHTTPHealthChecker(5 * time.Second)
+	sseHandler := api.NewSSEHandler(healthChecker)
+	sseHandler.RegisterRoutes(apiMux)
+
+	// Initialize JWT authentication
+	jwtManager := auth.NewJWTManager(auth.DefaultConfig())
+	authHandler := api.NewAuthHandler(jwtManager, userRepo)
+	authHandler.RegisterRoutes(apiMux)
+
 	auth := middleware.NewAuthenticator(cfg.APIKeys)
 	protectedMux := withConditionalAuth(apiMux, auth)
-	handler := middleware.WithRequestContext(protectedMux)
+	sseProtectedMux := withSSEAuth(apiMux, auth)
+	handler := middleware.WithRequestContext(sseProtectedMux)
+	// Add CORS support for admin UI and external clients
+	handler = middleware.WithCORS(handler)
 
 	log.Info("rad-gateway starting", "addr", cfg.ListenAddr)
 	server := &http.Server{
@@ -75,6 +119,32 @@ func withConditionalAuth(next *http.ServeMux, auth *middleware.Authenticator) ht
 	})
 }
 
+func withSSEAuth(next *http.ServeMux, auth *middleware.Authenticator) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Health endpoint is public
+		if r.URL.Path == "/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// SSE endpoints support token via query parameter (EventSource limitation)
+		if startsWith(r.URL.Path, "/v0/admin/events") {
+			auth.RequireWithTokenAuth(next).ServeHTTP(w, r)
+			return
+		}
+
+		// All other endpoints require header-based auth
+		auth.Require(next).ServeHTTP(w, r)
+	})
+}
+
 func startsWith(path, prefix string) bool {
 	return len(path) >= len(prefix) && path[:len(prefix)] == prefix
+}
+
+func getenv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }

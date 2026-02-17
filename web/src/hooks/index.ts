@@ -59,3 +59,20 @@ export {
 
 // Data fetching hooks
 export { useAsync, useFetch, usePagination } from './useAsync';
+
+// Real-time hooks
+export {
+  useSSE,
+  useSSEEvent,
+  useSSEEvents,
+} from './useSSE';
+
+export {
+  useRealtimeMetrics,
+  useRealtimeMetric,
+  useProviderHealth,
+  useCircuitBreaker,
+  useSystemAlerts,
+  isMetricHealthy,
+  formatMetric,
+} from './useRealtimeMetrics';

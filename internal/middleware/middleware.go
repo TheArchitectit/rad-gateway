@@ -68,6 +68,45 @@ func (a *Authenticator) Require(next http.Handler) http.Handler {
 	})
 }
 
+// RequireWithTokenAuth is like Require but also accepts token from query parameter.
+// This is needed for SSE endpoints where EventSource doesn't support custom headers.
+func (a *Authenticator) RequireWithTokenAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Try header first
+		secret := extractAPIKey(r)
+
+		// Fall back to query parameter (for SSE/EventSource)
+		if secret == "" {
+			secret = r.URL.Query().Get("token")
+		}
+
+		if secret == "" {
+			a.log.Warn("authentication failed: missing api key", "path", r.URL.Path, "remote_addr", r.RemoteAddr)
+			http.Error(w, `{"error":{"message":"missing api key","code":401}}`, http.StatusUnauthorized)
+			return
+		}
+
+		name := ""
+		for k, v := range a.keys {
+			if v == secret {
+				name = k
+				break
+			}
+		}
+		if name == "" {
+			a.log.Warn("authentication failed: invalid api key", "path", r.URL.Path, "remote_addr", r.RemoteAddr)
+			http.Error(w, `{"error":{"message":"invalid api key","code":401}}`, http.StatusUnauthorized)
+			return
+		}
+
+		a.log.Debug("authentication successful", "api_key_name", name, "path", r.URL.Path)
+
+		ctx := context.WithValue(r.Context(), KeyAPIKey, secret)
+		ctx = context.WithValue(ctx, KeyAPIName, name)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 func WithRequestContext(next http.Handler) http.Handler {
 	log := logger.WithComponent("middleware")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
