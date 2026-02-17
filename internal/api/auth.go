@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -136,7 +137,7 @@ func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	_ = h.repo.UpdateLastLogin(ctx, user.ID, time.Now())
 
 	// Set httpOnly cookies
-	h.setAuthCookies(w, tokenPair)
+	h.setAuthCookies(w, r, tokenPair)
 
 	// Build response
 	name := user.Email
@@ -170,7 +171,7 @@ func (h *AuthHandler) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Clear auth cookies
-	h.clearAuthCookies(w)
+	h.clearAuthCookies(w, r)
 
 	h.log.Debug("logout successful")
 	writeJSON(w, http.StatusOK, map[string]string{"message": "logged out successfully"})
@@ -246,7 +247,7 @@ func (h *AuthHandler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set new cookies
-	h.setAuthCookies(w, tokenPair)
+	h.setAuthCookies(w, r, tokenPair)
 
 	resp := LoginResponse{
 		AccessToken:  tokenPair.AccessToken,
@@ -297,14 +298,19 @@ func (h *AuthHandler) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// setAuthCookies sets authentication cookies.
-func (h *AuthHandler) setAuthCookies(w http.ResponseWriter, tokens *auth.TokenPair) {
+// setAuthCookies sets authentication cookies with secure settings.
+func (h *AuthHandler) setAuthCookies(w http.ResponseWriter, r *http.Request, tokens *auth.TokenPair) {
+	isSecure := h.isSecure(r)
+	if !isSecure {
+		h.log.Warn("setting insecure cookies - ensure HTTPS is enabled in production")
+	}
+
 	accessCookie := &http.Cookie{
 		Name:     "access_token",
 		Value:    tokens.AccessToken,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   h.isSecure(),
+		Secure:   isSecure,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   15 * 60, // 15 minutes
 	}
@@ -314,7 +320,7 @@ func (h *AuthHandler) setAuthCookies(w http.ResponseWriter, tokens *auth.TokenPa
 		Value:    tokens.RefreshToken,
 		Path:     "/v1/auth/refresh",
 		HttpOnly: true,
-		Secure:   h.isSecure(),
+		Secure:   isSecure,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   7 * 24 * 60 * 60, // 7 days
 	}
@@ -324,13 +330,15 @@ func (h *AuthHandler) setAuthCookies(w http.ResponseWriter, tokens *auth.TokenPa
 }
 
 // clearAuthCookies clears authentication cookies.
-func (h *AuthHandler) clearAuthCookies(w http.ResponseWriter) {
+func (h *AuthHandler) clearAuthCookies(w http.ResponseWriter, r *http.Request) {
+	isSecure := h.isSecure(r)
+
 	accessCookie := &http.Cookie{
 		Name:     "access_token",
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   h.isSecure(),
+		Secure:   isSecure,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   -1,
 		Expires:  time.Unix(0, 0),
@@ -341,7 +349,7 @@ func (h *AuthHandler) clearAuthCookies(w http.ResponseWriter) {
 		Value:    "",
 		Path:     "/v1/auth/refresh",
 		HttpOnly: true,
-		Secure:   h.isSecure(),
+		Secure:   isSecure,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   -1,
 		Expires:  time.Unix(0, 0),
@@ -352,9 +360,23 @@ func (h *AuthHandler) clearAuthCookies(w http.ResponseWriter) {
 }
 
 // isSecure returns true if cookies should be secure (HTTPS only).
-func (h *AuthHandler) isSecure() bool {
-	// In production, this should check if the server is running over HTTPS
-	// For now, return false to allow HTTP in development
+// Checks X-Forwarded-Proto header for reverse proxy setups, or TLS state.
+func (h *AuthHandler) isSecure(r *http.Request) bool {
+	// Check for HTTPS via X-Forwarded-Proto header (for reverse proxy/load balancer setups)
+	if r.Header.Get("X-Forwarded-Proto") == "https" {
+		return true
+	}
+
+	// Check TLS connection state directly
+	if r.TLS != nil {
+		return true
+	}
+
+	// Allow override via environment variable
+	if os.Getenv("FORCE_SECURE_COOKIES") == "true" {
+		return true
+	}
+
 	return false
 }
 
