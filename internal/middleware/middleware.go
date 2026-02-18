@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"log/slog"
 
@@ -13,13 +15,16 @@ import (
 	"radgateway/internal/rbac"
 )
 
-type ctxKey string
+// ctxKey is an empty struct type for context keys to guarantee uniqueness.
+type ctxKey struct{}
 
-const (
-	KeyRequestID ctxKey = "request_id"
-	KeyTraceID   ctxKey = "trace_id"
-	KeyAPIKey    ctxKey = "api_key"
-	KeyAPIName   ctxKey = "api_key_name"
+// Context keys for request context values.
+// Using empty struct ensures no collisions with other packages.
+var (
+	KeyRequestID = ctxKey{}
+	KeyTraceID   = ctxKey{}
+	KeyAPIKey    = ctxKey{}
+	KeyAPIName   = ctxKey{}
 )
 
 type Authenticator struct {
@@ -165,9 +170,14 @@ func extractAPIKey(r *http.Request) string {
 	return strings.TrimSpace(r.URL.Query().Get("key"))
 }
 
+// newID generates a random 16-character hex ID.
+// Falls back to timestamp-based ID on random source failure.
 func newID() string {
 	b := make([]byte, 8)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to less secure but functional ID generation
+		return fmt.Sprintf("%x", time.Now().UnixNano())[:16]
+	}
 	return hex.EncodeToString(b)
 }
 
