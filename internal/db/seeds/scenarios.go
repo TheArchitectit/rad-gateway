@@ -711,6 +711,7 @@ func generateSampleUsageRecords(g *Generator, data *FullSeedData, count int) []d
 			WorkspaceID:      ws.ID,
 			RequestID:        g.GenerateID("req"),
 			TraceID:          g.GenerateID("trace"),
+			APIKeyID:         &userID,
 			IncomingAPI:      RandomChoice(apis),
 			IncomingModel:    RandomChoice(models),
 			SelectedModel:    strPtr(RandomChoice(models)),

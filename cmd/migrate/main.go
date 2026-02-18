@@ -36,16 +36,16 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"embed"
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/anthropics/rad-gateway/internal/db"
+	"radgateway/internal/db"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -527,13 +527,13 @@ func cmdCreate(cfg Config) int {
 		return 1
 	}
 
-	filepath, err := db.CreateMigration(cfg.MigrationsPath, name)
+	migrationFile, err := db.CreateMigration(cfg.MigrationsPath, name)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating migration: %v\n", err)
 		return 1
 	}
 
-	fmt.Printf("Created migration: %s\n", filepath)
+	fmt.Printf("Created migration: %s\n", migrationFile)
 	return 0
 }
 
@@ -597,7 +597,8 @@ func connect(cfg Config) (db.Database, *db.Migrator, error) {
 	// Parse database URL to determine driver
 	driver, dsn := parseDatabaseURL(cfg.DatabaseURL)
 
-	// Create database config	dbConfig := db.Config{
+	// Create database config
+	dbConfig := db.Config{
 		Driver: driver,
 		DSN:    dsn,
 	}
