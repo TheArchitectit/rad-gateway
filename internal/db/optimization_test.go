@@ -337,10 +337,11 @@ func BenchmarkJoinUserRoles(b *testing.B) {
 	ctx := context.Background()
 
 	// Create roles
+	roleDesc := "Test Role"
 	role := &Role{
 		ID:          uuid.New().String(),
 		Name:        "test-role",
-		Description: "Test Role",
+		Description: &roleDesc,
 		IsSystem:    false,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
