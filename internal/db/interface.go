@@ -33,6 +33,7 @@ type Database interface {
 	Quotas() QuotaRepository
 	UsageRecords() UsageRecordRepository
 	TraceEvents() TraceEventRepository
+	ModelCards() ModelCardRepository
 
 	// Migration support
 	RunMigrations() error
@@ -169,6 +170,51 @@ type TraceEventRepository interface {
 	GetByTraceID(ctx context.Context, traceID string) ([]TraceEvent, error)
 	GetByRequestID(ctx context.Context, requestID string) ([]TraceEvent, error)
 	CreateBatch(ctx context.Context, events []TraceEvent) error
+}
+
+// ModelCardRepository defines A2A Model Card data access operations.
+type ModelCardRepository interface {
+	// GetByID retrieves a model card by its ID.
+	GetByID(ctx context.Context, id string) (*ModelCard, error)
+
+	// GetBySlug retrieves a model card by workspace and slug.
+	GetBySlug(ctx context.Context, workspaceID, slug string) (*ModelCard, error)
+
+	// GetByWorkspace retrieves all model cards in a workspace.
+	GetByWorkspace(ctx context.Context, workspaceID string, limit, offset int) ([]ModelCard, error)
+
+	// GetByUser retrieves all model cards created by a user.
+	GetByUser(ctx context.Context, userID string, limit, offset int) ([]ModelCard, error)
+
+	// Create creates a new model card.
+	Create(ctx context.Context, card *ModelCard) error
+
+	// Update updates an existing model card and creates a version record.
+	Update(ctx context.Context, card *ModelCard, changeReason *string, updatedBy *string) error
+
+	// Delete removes a model card (soft delete by setting status to 'deleted').
+	Delete(ctx context.Context, id string) error
+
+	// HardDelete permanently removes a model card and all its versions.
+	HardDelete(ctx context.Context, id string) error
+
+	// Search searches model cards using JSONB queries.
+	Search(ctx context.Context, params ModelCardSearchParams) ([]ModelCardSearchResult, error)
+
+	// SearchByCapability finds model cards with specific capabilities.
+	SearchByCapability(ctx context.Context, workspaceID string, capability string, limit, offset int) ([]ModelCard, error)
+
+	// SearchBySkill finds model cards exposing specific skills.
+	SearchBySkill(ctx context.Context, workspaceID string, skillID string, limit, offset int) ([]ModelCard, error)
+
+	// GetVersions retrieves all versions of a model card.
+	GetVersions(ctx context.Context, modelCardID string) ([]ModelCardVersion, error)
+
+	// GetVersion retrieves a specific version of a model card.
+	GetVersion(ctx context.Context, modelCardID string, version int) (*ModelCardVersion, error)
+
+	// RestoreVersion restores a model card to a specific version.
+	RestoreVersion(ctx context.Context, modelCardID string, version int, restoredBy *string) error
 }
 
 // UsageSummary holds aggregated usage statistics.

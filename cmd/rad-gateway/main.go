@@ -1,13 +1,18 @@
 package main
 
 import (
+	"context"
+	"database/sql"
+	"fmt"
 	"net/http"
 	"os"
 	"time"
 
+	"radgateway/internal/a2a"
 	"radgateway/internal/admin"
 	"radgateway/internal/api"
 	"radgateway/internal/auth"
+	"radgateway/internal/cache"
 	"radgateway/internal/config"
 	"radgateway/internal/core"
 	"radgateway/internal/db"
@@ -19,6 +24,39 @@ import (
 	"radgateway/internal/usage"
 )
 
+// a2aCacheAdapter adapts cache.TypedModelCardCache to a2a.Cache interface.
+type a2aCacheAdapter struct {
+	typed cache.TypedModelCardCache
+}
+
+func (a *a2aCacheAdapter) Get(ctx context.Context, id string) (*a2a.ModelCard, error) {
+	return a.typed.Get(ctx, id)
+}
+
+func (a *a2aCacheAdapter) Set(ctx context.Context, id string, card *a2a.ModelCard, ttl time.Duration) error {
+	return a.typed.Set(ctx, id, card, ttl)
+}
+
+func (a *a2aCacheAdapter) Delete(ctx context.Context, id string) error {
+	return a.typed.Delete(ctx, id)
+}
+
+func (a *a2aCacheAdapter) GetProjectCards(ctx context.Context, projectID string) ([]a2a.ModelCard, error) {
+	return a.typed.GetProjectCards(ctx, projectID)
+}
+
+func (a *a2aCacheAdapter) SetProjectCards(ctx context.Context, projectID string, cards []a2a.ModelCard, ttl time.Duration) error {
+	return a.typed.SetProjectCards(ctx, projectID, cards, ttl)
+}
+
+func (a *a2aCacheAdapter) DeleteProjectCards(ctx context.Context, projectID string) error {
+	return a.typed.DeleteProjectCards(ctx, projectID)
+}
+
+func (a *a2aCacheAdapter) InvalidateCard(ctx context.Context, id string, projectID string) error {
+	return a.typed.InvalidateCard(ctx, id, projectID)
+}
+
 func main() {
 	// Initialize structured logger first
 	logger.Init(logger.DefaultConfig())
@@ -29,27 +67,90 @@ func main() {
 	// Initialize database (optional - for auth and persistence)
 	var database db.Database
 	var userRepo db.UserRepository
+	var dbDriverUsed string
 	dbDSN := getenv("RAD_DB_DSN", "radgateway.db")
 	dbDriver := getenv("RAD_DB_DRIVER", "sqlite")
 
 	if dbDSN != "" {
 		var err error
-		database, err = db.New(db.Config{
+		// Use fallback logic: try PostgreSQL first, fall back to SQLite if unavailable
+		database, dbDriverUsed, err = db.NewWithFallback(db.Config{
 			Driver: dbDriver,
 			DSN:    dbDSN,
 		})
 		if err != nil {
 			log.Warn("database connection failed, running without persistence", "error", err.Error())
 		} else {
+			if dbDriverUsed != dbDriver {
+				log.Warn("using fallback database", "requested", dbDriver, "actual", dbDriverUsed)
+			}
 			if err := database.RunMigrations(); err != nil {
 				log.Warn("database migrations failed", "error", err.Error())
 			} else {
-				log.Info("database connected")
+				log.Info("database connected", "driver", dbDriverUsed)
 				userRepo = database.Users()
 			}
 		}
 		if database != nil {
 			defer database.Close()
+		}
+	}
+
+	// Initialize Redis cache (optional - for model card caching)
+	var modelCardCache cache.TypedModelCardCache
+	redisAddr := getenv("RAD_REDIS_ADDR", "")
+	if redisAddr != "" {
+		redisConfig := cache.Config{
+			Address:    redisAddr,
+			Password:   getenv("RAD_REDIS_PASSWORD", ""),
+			Database:   0,
+			DefaultTTL: 5 * time.Minute,
+			KeyPrefix:  "rad:",
+		}
+		if redisDB := getenv("RAD_REDIS_DB", "0"); redisDB != "0" {
+			// Parse database number
+			var dbNum int
+			fmt.Sscanf(redisDB, "%d", &dbNum)
+			redisConfig.Database = dbNum
+		}
+
+		redisCache, err := cache.NewRedis(redisConfig)
+		if err != nil {
+			log.Warn("redis connection failed, running without cache", "error", err.Error())
+		} else {
+			// Verify connection
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			if err := redisCache.Ping(ctx); err != nil {
+				log.Warn("redis ping failed, running without cache", "error", err.Error())
+				redisCache.Close()
+			} else {
+				log.Info("redis cache connected", "address", redisAddr)
+				modelCardCache = cache.NewTypedModelCardCache(redisCache, 5*time.Minute)
+				defer redisCache.Close()
+			}
+		}
+	} else {
+		log.Info("redis not configured, running without cache")
+	}
+
+	// Initialize hybrid repository if database and cache are available
+	var a2aRepo a2a.Repository
+	if database != nil {
+		// Get underlying SQL DB for hybrid repository
+		type sqlDBer interface {
+			DB() *sql.DB
+		}
+		if sqlDB, ok := database.(sqlDBer); ok {
+			// Use cache if available, otherwise use nil cache (pass-through to DB)
+			var cacheImpl a2a.Cache
+			if modelCardCache != nil {
+				cacheImpl = &a2aCacheAdapter{typed: modelCardCache}
+			}
+			a2aRepo = a2a.NewHybridRepository(sqlDB.DB(), cacheImpl, log)
+			log.Info("A2A hybrid repository initialized")
+		} else {
+			log.Warn("database does not expose *sql.DB, A2A repository not initialized")
 		}
 	}
 
@@ -78,6 +179,13 @@ func main() {
 	// Register API handlers (OpenAI-compatible endpoints)
 	api.NewHandlers(gateway).Register(apiMux)
 
+	// Register A2A handlers (if repository is initialized)
+	if a2aRepo != nil {
+		a2aHandlers := a2a.NewHandlers(a2aRepo)
+		a2aHandlers.Register(apiMux)
+		log.Info("A2A handlers registered")
+	}
+
 	// Register admin handlers
 	admin.NewHandlers(cfg, usageSink, traceStore).Register(adminMux)
 
@@ -102,8 +210,30 @@ func main() {
 	combinedMux.Handle("/v1/auth/", http.StripPrefix("/v1/auth", publicMux))
 	combinedMux.Handle("/health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+
+		// Check database health if available
+		dbStatus := "ok"
+		dbHealthy := true
+		if database != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+			defer cancel()
+			if err := database.Ping(ctx); err != nil {
+				dbStatus = "degraded"
+				dbHealthy = false
+			}
+		} else {
+			dbStatus = "not_configured"
+		}
+
+		// Return appropriate status code
+		if !dbHealthy {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
+
+		response := fmt.Sprintf(`{"status":"ok","database":"%s","driver":"%s"}`, dbStatus, dbDriverUsed)
+		w.Write([]byte(response))
 	}))
 
 	// Admin endpoints require JWT authentication

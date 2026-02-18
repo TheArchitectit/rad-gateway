@@ -35,37 +35,72 @@ type pgRepositories struct {
 	quotas       *pgQuotaRepo
 	usageRecords *pgUsageRecordRepo
 	traceEvents  *pgTraceEventRepo
+	modelCards   *pgModelCardRepo
 }
 
-// NewPostgres creates a new PostgreSQL database connection.
+// NewPostgres creates a new PostgreSQL database connection with retry logic.
 func NewPostgres(config Config) (*PostgresDB, error) {
 	if config.DSN == "" {
 		return nil, fmt.Errorf("PostgreSQL DSN is required")
 	}
 
-	db, err := sql.Open("postgres", config.DSN)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open postgres database: %w", err)
+	// Configure connection pool with defaults (max 10 connections as specified)
+	maxOpenConns := config.MaxOpenConns
+	if maxOpenConns <= 0 {
+		maxOpenConns = 10 // Default: max 10 connections as specified
+	}
+	maxIdleConns := config.MaxIdleConns
+	if maxIdleConns <= 0 {
+		maxIdleConns = 3
+	}
+	connMaxLifetime := config.ConnMaxLifetime
+	if connMaxLifetime <= 0 {
+		connMaxLifetime = 5 * time.Minute
 	}
 
-	// Configure connection pool
-	if config.MaxOpenConns > 0 {
-		db.SetMaxOpenConns(config.MaxOpenConns)
-	} else {
-		db.SetMaxOpenConns(25) // Default for PostgreSQL
-	}
-	if config.MaxIdleConns > 0 {
-		db.SetMaxIdleConns(config.MaxIdleConns)
-	} else {
-		db.SetMaxIdleConns(5)
-	}
-	if config.ConnMaxLifetime > 0 {
-		db.SetConnMaxLifetime(config.ConnMaxLifetime)
-	} else {
-		db.SetConnMaxLifetime(5 * time.Minute)
-	}
-	if config.ConnMaxIdleTime > 0 {
-		db.SetConnMaxIdleTime(config.ConnMaxIdleTime)
+	// Retry logic: 3 attempts with exponential backoff
+	var db *sql.DB
+	var err error
+	maxRetries := 3
+	retryDelay := 1 * time.Second
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		db, err = sql.Open("postgres", config.DSN)
+		if err != nil {
+			if attempt < maxRetries {
+				time.Sleep(retryDelay)
+				retryDelay *= 2 // Exponential backoff
+				continue
+			}
+			return nil, fmt.Errorf("failed to open postgres database after %d attempts: %w", maxRetries, err)
+		}
+
+		// Configure connection pool
+		db.SetMaxOpenConns(maxOpenConns)
+		db.SetMaxIdleConns(maxIdleConns)
+		db.SetConnMaxLifetime(connMaxLifetime)
+		if config.ConnMaxIdleTime > 0 {
+			db.SetConnMaxIdleTime(config.ConnMaxIdleTime)
+		}
+
+		// Test connection with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err = db.PingContext(ctx)
+		cancel()
+
+		if err == nil {
+			break // Success
+		}
+
+		db.Close()
+
+		if attempt < maxRetries {
+			fmt.Printf("PostgreSQL connection attempt %d/%d failed: %v. Retrying in %v...\n", attempt, maxRetries, err, retryDelay)
+			time.Sleep(retryDelay)
+			retryDelay *= 2 // Exponential backoff
+		} else {
+			return nil, fmt.Errorf("failed to connect to postgres after %d attempts: %w", maxRetries, err)
+		}
 	}
 
 	database := &PostgresDB{
@@ -86,6 +121,7 @@ func NewPostgres(config Config) (*PostgresDB, error) {
 		quotas:       &pgQuotaRepo{db: db},
 		usageRecords: &pgUsageRecordRepo{db: db},
 		traceEvents:  &pgTraceEventRepo{db: db},
+		modelCards:   &pgModelCardRepo{db: db},
 	}
 
 	return database, nil
@@ -133,6 +169,7 @@ func (p *PostgresDB) APIKeys() APIKeyRepository           { return p.repos.apiKe
 func (p *PostgresDB) Quotas() QuotaRepository             { return p.repos.quotas }
 func (p *PostgresDB) UsageRecords() UsageRecordRepository { return p.repos.usageRecords }
 func (p *PostgresDB) TraceEvents() TraceEventRepository   { return p.repos.traceEvents }
+func (p *PostgresDB) ModelCards() ModelCardRepository     { return p.repos.modelCards }
 
 // DB returns the underlying *sql.DB for migrations and advanced operations.
 func (p *PostgresDB) DB() *sql.DB { return p.db }
@@ -604,4 +641,374 @@ func (r *pgTraceEventRepo) CreateBatch(ctx context.Context, events []TraceEvent)
 		}
 	}
 	return tx.Commit()
+}
+
+type pgModelCardRepo struct{ db *sql.DB }
+
+func (r *pgModelCardRepo) GetByID(ctx context.Context, id string) (*ModelCard, error) {
+	card := &ModelCard{}
+	query := `SELECT id, workspace_id, user_id, name, slug, description, card, version, status, created_at, updated_at
+		      FROM a2a_model_cards WHERE id = $1`
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&card.ID, &card.WorkspaceID, &card.UserID, &card.Name, &card.Slug,
+		&card.Description, &card.Card, &card.Version, &card.Status,
+		&card.CreatedAt, &card.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return card, err
+}
+
+func (r *pgModelCardRepo) GetBySlug(ctx context.Context, workspaceID, slug string) (*ModelCard, error) {
+	card := &ModelCard{}
+	query := `SELECT id, workspace_id, user_id, name, slug, description, card, version, status, created_at, updated_at
+		      FROM a2a_model_cards WHERE workspace_id = $1 AND slug = $2`
+	err := r.db.QueryRowContext(ctx, query, workspaceID, slug).Scan(
+		&card.ID, &card.WorkspaceID, &card.UserID, &card.Name, &card.Slug,
+		&card.Description, &card.Card, &card.Version, &card.Status,
+		&card.CreatedAt, &card.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return card, err
+}
+
+func (r *pgModelCardRepo) GetByWorkspace(ctx context.Context, workspaceID string, limit, offset int) ([]ModelCard, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	query := `SELECT id, workspace_id, user_id, name, slug, description, card, version, status, created_at, updated_at
+		      FROM a2a_model_cards WHERE workspace_id = $1 ORDER BY updated_at DESC LIMIT $2 OFFSET $3`
+	rows, err := r.db.QueryContext(ctx, query, workspaceID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cards []ModelCard
+	for rows.Next() {
+		var c ModelCard
+		err := rows.Scan(
+			&c.ID, &c.WorkspaceID, &c.UserID, &c.Name, &c.Slug,
+			&c.Description, &c.Card, &c.Version, &c.Status,
+			&c.CreatedAt, &c.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		cards = append(cards, c)
+	}
+	return cards, rows.Err()
+}
+
+func (r *pgModelCardRepo) GetByUser(ctx context.Context, userID string, limit, offset int) ([]ModelCard, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	query := `SELECT id, workspace_id, user_id, name, slug, description, card, version, status, created_at, updated_at
+		      FROM a2a_model_cards WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2 OFFSET $3`
+	rows, err := r.db.QueryContext(ctx, query, userID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cards []ModelCard
+	for rows.Next() {
+		var c ModelCard
+		err := rows.Scan(
+			&c.ID, &c.WorkspaceID, &c.UserID, &c.Name, &c.Slug,
+			&c.Description, &c.Card, &c.Version, &c.Status,
+			&c.CreatedAt, &c.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		cards = append(cards, c)
+	}
+	return cards, rows.Err()
+}
+
+func (r *pgModelCardRepo) Create(ctx context.Context, card *ModelCard) error {
+	if card.ID == "" {
+		card.ID = generateUUID()
+	}
+	now := time.Now()
+	card.CreatedAt = now
+	card.UpdatedAt = now
+	card.Version = 1
+	if card.Status == "" {
+		card.Status = "active"
+	}
+
+	query := `INSERT INTO a2a_model_cards (id, workspace_id, user_id, name, slug, description, card, version, status, created_at, updated_at)
+		      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+	_, err := r.db.ExecContext(ctx, query,
+		card.ID, card.WorkspaceID, card.UserID, card.Name, card.Slug,
+		card.Description, card.Card, card.Version, card.Status, card.CreatedAt, card.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to create model card: %w", err)
+	}
+	return r.createVersion(ctx, card, nil, card.UserID)
+}
+
+func (r *pgModelCardRepo) Update(ctx context.Context, card *ModelCard, changeReason *string, updatedBy *string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	current, err := r.GetByID(ctx, card.ID)
+	if err != nil {
+		return fmt.Errorf("failed to get current card: %w", err)
+	}
+	if current == nil {
+		return fmt.Errorf("model card not found: %s", card.ID)
+	}
+
+	card.Version = current.Version + 1
+	card.UpdatedAt = time.Now()
+
+	versionQuery := `INSERT INTO model_card_versions (id, model_card_id, workspace_id, user_id, version, name, slug, description, card, status, change_reason, created_by, created_at)
+		              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
+	_, err = tx.ExecContext(ctx, versionQuery,
+		generateUUID(), current.ID, current.WorkspaceID, current.UserID,
+		current.Version, current.Name, current.Slug, current.Description,
+		current.Card, current.Status, changeReason, updatedBy, current.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to create version record: %w", err)
+	}
+
+	updateQuery := `UPDATE a2a_model_cards
+		            SET name = $1, slug = $2, description = $3, card = $4,
+		                version = $5, status = $6, updated_at = $7
+		            WHERE id = $8`
+	_, err = tx.ExecContext(ctx, updateQuery,
+		card.Name, card.Slug, card.Description, card.Card,
+		card.Version, card.Status, card.UpdatedAt, card.ID)
+	if err != nil {
+		return fmt.Errorf("failed to update model card: %w", err)
+	}
+
+	return tx.Commit()
+}
+
+func (r *pgModelCardRepo) Delete(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE a2a_model_cards SET status = 'deleted', updated_at = $1 WHERE id = $2`,
+		time.Now(), id)
+	return err
+}
+
+func (r *pgModelCardRepo) HardDelete(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM a2a_model_cards WHERE id = $1`, id)
+	return err
+}
+
+func (r *pgModelCardRepo) Search(ctx context.Context, params ModelCardSearchParams) ([]ModelCardSearchResult, error) {
+	if params.Limit <= 0 {
+		params.Limit = 100
+	}
+
+	query := `SELECT id, workspace_id, user_id, name, slug, description, card, version, status, created_at, updated_at
+		      FROM a2a_model_cards WHERE workspace_id = $1`
+	args := []interface{}{params.WorkspaceID}
+	argCount := 1
+
+	if params.Status != "" {
+		argCount++
+		query += fmt.Sprintf(" AND status = $%d", argCount)
+		args = append(args, params.Status)
+	}
+
+	if params.Capability != "" {
+		argCount++
+		query += fmt.Sprintf(" AND card->'capabilities'->>$%d = 'true'", argCount)
+		args = append(args, params.Capability)
+	}
+
+	if params.HasSkill != "" {
+		argCount++
+		query += fmt.Sprintf(" AND EXISTS (SELECT 1 FROM jsonb_array_elements(card->'skills') AS skill WHERE skill->>'id' = $%d)", argCount)
+		args = append(args, params.HasSkill)
+	}
+
+	if params.URL != "" {
+		argCount++
+		query += fmt.Sprintf(" AND card->>'url' ILIKE $%d", argCount)
+		args = append(args, "%"+params.URL+"%")
+	}
+
+	if params.Query != "" {
+		argCount++
+		query += fmt.Sprintf(" AND (name ILIKE $%d OR card->>'description' ILIKE $%d)", argCount, argCount)
+		args = append(args, "%"+params.Query+"%")
+	}
+
+	query += fmt.Sprintf(" ORDER BY updated_at DESC LIMIT $%d OFFSET $%d", argCount+1, argCount+2)
+	args = append(args, params.Limit, params.Offset)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []ModelCardSearchResult
+	for rows.Next() {
+		var c ModelCard
+		err := rows.Scan(
+			&c.ID, &c.WorkspaceID, &c.UserID, &c.Name, &c.Slug,
+			&c.Description, &c.Card, &c.Version, &c.Status,
+			&c.CreatedAt, &c.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, ModelCardSearchResult{ModelCard: c, Relevance: 1.0})
+	}
+	return results, rows.Err()
+}
+
+func (r *pgModelCardRepo) SearchByCapability(ctx context.Context, workspaceID string, capability string, limit, offset int) ([]ModelCard, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	query := `SELECT id, workspace_id, user_id, name, slug, description, card, version, status, created_at, updated_at
+		      FROM a2a_model_cards
+		      WHERE workspace_id = $1 AND card->'capabilities'->$2 = 'true'
+		      ORDER BY updated_at DESC LIMIT $3 OFFSET $4`
+	rows, err := r.db.QueryContext(ctx, query, workspaceID, capability, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cards []ModelCard
+	for rows.Next() {
+		var c ModelCard
+		err := rows.Scan(
+			&c.ID, &c.WorkspaceID, &c.UserID, &c.Name, &c.Slug,
+			&c.Description, &c.Card, &c.Version, &c.Status,
+			&c.CreatedAt, &c.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		cards = append(cards, c)
+	}
+	return cards, rows.Err()
+}
+
+func (r *pgModelCardRepo) SearchBySkill(ctx context.Context, workspaceID string, skillID string, limit, offset int) ([]ModelCard, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	query := `SELECT id, workspace_id, user_id, name, slug, description, card, version, status, created_at, updated_at
+		      FROM a2a_model_cards
+		      WHERE workspace_id = $1
+		      AND EXISTS (SELECT 1 FROM jsonb_array_elements(card->'skills') AS skill WHERE skill->>'id' = $2)
+		      ORDER BY updated_at DESC LIMIT $3 OFFSET $4`
+	rows, err := r.db.QueryContext(ctx, query, workspaceID, skillID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cards []ModelCard
+	for rows.Next() {
+		var c ModelCard
+		err := rows.Scan(
+			&c.ID, &c.WorkspaceID, &c.UserID, &c.Name, &c.Slug,
+			&c.Description, &c.Card, &c.Version, &c.Status,
+			&c.CreatedAt, &c.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		cards = append(cards, c)
+	}
+	return cards, rows.Err()
+}
+
+func (r *pgModelCardRepo) GetVersions(ctx context.Context, modelCardID string) ([]ModelCardVersion, error) {
+	query := `SELECT id, model_card_id, workspace_id, user_id, version, name, slug, description, card, status, change_reason, created_by, created_at
+		      FROM model_card_versions
+		      WHERE model_card_id = $1 ORDER BY version DESC`
+	rows, err := r.db.QueryContext(ctx, query, modelCardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var versions []ModelCardVersion
+	for rows.Next() {
+		var v ModelCardVersion
+		err := rows.Scan(
+			&v.ID, &v.ModelCardID, &v.WorkspaceID, &v.UserID, &v.Version,
+			&v.Name, &v.Slug, &v.Description, &v.Card, &v.Status,
+			&v.ChangeReason, &v.CreatedBy, &v.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		versions = append(versions, v)
+	}
+	return versions, rows.Err()
+}
+
+func (r *pgModelCardRepo) GetVersion(ctx context.Context, modelCardID string, version int) (*ModelCardVersion, error) {
+	v := &ModelCardVersion{}
+	query := `SELECT id, model_card_id, workspace_id, user_id, version, name, slug, description, card, status, change_reason, created_by, created_at
+		      FROM model_card_versions WHERE model_card_id = $1 AND version = $2`
+	err := r.db.QueryRowContext(ctx, query, modelCardID, version).Scan(
+		&v.ID, &v.ModelCardID, &v.WorkspaceID, &v.UserID, &v.Version,
+		&v.Name, &v.Slug, &v.Description, &v.Card, &v.Status,
+		&v.ChangeReason, &v.CreatedBy, &v.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return v, err
+}
+
+func (r *pgModelCardRepo) RestoreVersion(ctx context.Context, modelCardID string, version int, restoredBy *string) error {
+	v, err := r.GetVersion(ctx, modelCardID, version)
+	if err != nil {
+		return fmt.Errorf("failed to get version: %w", err)
+	}
+	if v == nil {
+		return fmt.Errorf("version not found: %d", version)
+	}
+
+	current, err := r.GetByID(ctx, modelCardID)
+	if err != nil {
+		return fmt.Errorf("failed to get current card: %w", err)
+	}
+	if current == nil {
+		return fmt.Errorf("model card not found: %s", modelCardID)
+	}
+
+	changeReason := "Restored from version " + fmt.Sprintf("%d", version)
+	card := &ModelCard{
+		ID:          current.ID,
+		WorkspaceID: current.WorkspaceID,
+		UserID:      current.UserID,
+		Name:        v.Name,
+		Slug:        v.Slug,
+		Description: v.Description,
+		Card:        v.Card,
+		Status:      v.Status,
+	}
+
+	return r.Update(ctx, card, &changeReason, restoredBy)
+}
+
+func (r *pgModelCardRepo) createVersion(ctx context.Context, card *ModelCard, changeReason *string, createdBy *string) error {
+	query := `INSERT INTO model_card_versions (id, model_card_id, workspace_id, user_id, version, name, slug, description, card, status, change_reason, created_by, created_at)
+		      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
+	_, err := r.db.ExecContext(ctx, query,
+		generateUUID(), card.ID, card.WorkspaceID, card.UserID,
+		card.Version, card.Name, card.Slug, card.Description,
+		card.Card, card.Status, changeReason, createdBy, card.CreatedAt)
+	return err
+}
+
+// generateUUID generates a new UUID (placeholder - use proper UUID library in production).
+func generateUUID() string {
+	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), time.Now().Unix())
 }

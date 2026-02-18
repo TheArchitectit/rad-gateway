@@ -3,6 +3,8 @@
 package db
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -252,4 +254,118 @@ type TraceEvent struct {
 	Timestamp  time.Time  `db:"timestamp" json:"timestamp"`
 	DurationMs *int       `db:"duration_ms" json:"durationMs,omitempty"`
 	CreatedAt  time.Time  `db:"created_at" json:"createdAt"`
+}
+
+// ModelCardCapability represents an A2A capability (e.g., streaming, pushNotifications).
+type ModelCardCapability struct {
+	Streaming         bool `json:"streaming,omitempty"`
+	PushNotifications bool `json:"pushNotifications,omitempty"`
+}
+
+// ModelCardSkill represents an A2A skill exposed by the agent.
+type ModelCardSkill struct {
+	ID           string          `json:"id"`
+	Name         string          `json:"name"`
+	Description  string          `json:"description,omitempty"`
+	Tags         []string        `json:"tags,omitempty"`
+	Examples     []string        `json:"examples,omitempty"`
+	InputSchema  json.RawMessage `json:"inputSchema,omitempty"`
+	OutputSchema json.RawMessage `json:"outputSchema,omitempty"`
+}
+
+// ModelCardJSON represents the A2A Model Card JSON structure.
+type ModelCardJSON struct {
+	Name               string              `json:"name"`
+	Description        string              `json:"description,omitempty"`
+	URL                string              `json:"url"`
+	Version            string              `json:"version,omitempty"`
+	Capabilities       ModelCardCapability `json:"capabilities,omitempty"`
+	Skills             []ModelCardSkill    `json:"skills,omitempty"`
+	DefaultInputModes  []string            `json:"defaultInputModes,omitempty"`
+	DefaultOutputModes []string            `json:"defaultOutputModes,omitempty"`
+	Credentials        json.RawMessage     `json:"credentials,omitempty"`
+}
+
+// ModelCard represents an A2A Model Card stored in the database.
+type ModelCard struct {
+	ID          string          `db:"id" json:"id"`
+	WorkspaceID string          `db:"workspace_id" json:"workspaceId"`
+	UserID      *string         `db:"user_id" json:"userId,omitempty"`
+	Name        string          `db:"name" json:"name"`
+	Slug        string          `db:"slug" json:"slug"`
+	Description *string         `db:"description" json:"description,omitempty"`
+	Card        json.RawMessage `db:"card" json:"card"`
+	Version     int             `db:"version" json:"version"`
+	Status      string          `db:"status" json:"status"`
+	CreatedAt   time.Time       `db:"created_at" json:"createdAt"`
+	UpdatedAt   time.Time       `db:"updated_at" json:"updatedAt"`
+}
+
+// ParsedCard returns the parsed ModelCardJSON from the raw JSON.
+func (m *ModelCard) ParsedCard() (*ModelCardJSON, error) {
+	if m.Card == nil {
+		return &ModelCardJSON{}, nil
+	}
+	var card ModelCardJSON
+	if err := json.Unmarshal(m.Card, &card); err != nil {
+		return nil, fmt.Errorf("failed to parse model card JSON: %w", err)
+	}
+	return &card, nil
+}
+
+// SetCard sets the card JSON from a ModelCardJSON struct.
+func (m *ModelCard) SetCard(card *ModelCardJSON) error {
+	data, err := json.Marshal(card)
+	if err != nil {
+		return fmt.Errorf("failed to marshal model card JSON: %w", err)
+	}
+	m.Card = data
+	return nil
+}
+
+// ModelCardVersion represents a historical version of an A2A Model Card.
+type ModelCardVersion struct {
+	ID           string          `db:"id" json:"id"`
+	ModelCardID  string          `db:"model_card_id" json:"modelCardId"`
+	WorkspaceID  string          `db:"workspace_id" json:"workspaceId"`
+	UserID       *string         `db:"user_id" json:"userId,omitempty"`
+	Version      int             `db:"version" json:"version"`
+	Name         string          `db:"name" json:"name"`
+	Slug         string          `db:"slug" json:"slug"`
+	Description  *string         `db:"description" json:"description,omitempty"`
+	Card         json.RawMessage `db:"card" json:"card"`
+	Status       string          `db:"status" json:"status"`
+	ChangeReason *string         `db:"change_reason" json:"changeReason,omitempty"`
+	CreatedBy    *string         `db:"created_by" json:"createdBy,omitempty"`
+	CreatedAt    time.Time       `db:"created_at" json:"createdAt"`
+}
+
+// ParsedCard returns the parsed ModelCardJSON from the raw JSON.
+func (v *ModelCardVersion) ParsedCard() (*ModelCardJSON, error) {
+	if v.Card == nil {
+		return &ModelCardJSON{}, nil
+	}
+	var card ModelCardJSON
+	if err := json.Unmarshal(v.Card, &card); err != nil {
+		return nil, fmt.Errorf("failed to parse model card JSON: %w", err)
+	}
+	return &card, nil
+}
+
+// ModelCardSearchParams defines search parameters for model cards.
+type ModelCardSearchParams struct {
+	WorkspaceID string
+	Query       string
+	Capability  string // Search for specific capability
+	HasSkill    string // Search for specific skill ID
+	URL         string // Search by URL pattern
+	Status      string
+	Limit       int
+	Offset      int
+}
+
+// ModelCardSearchResult represents a search result with relevance scoring.
+type ModelCardSearchResult struct {
+	ModelCard ModelCard `json:"modelCard"`
+	Relevance float64   `json:"relevance"`
 }
