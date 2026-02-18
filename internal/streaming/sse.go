@@ -288,11 +288,12 @@ func escapeField(s string) string {
 
 // Client represents an SSE client connection that can receive events.
 type Client struct {
-	writer *Writer
-	ctx    context.Context
-	cancel context.CancelFunc
-	done   chan struct{}
-	logger *slog.Logger
+	writer   *Writer
+	ctx      context.Context
+	cancel   context.CancelFunc
+	done     chan struct{}
+	closeOnce sync.Once
+	logger   *slog.Logger
 }
 
 // NewClient creates a new SSE client connection.
@@ -355,15 +356,16 @@ func (c *Client) Keepalive() error {
 
 // Close closes the client connection.
 func (c *Client) Close() error {
-	c.logger.Debug("closing SSE client connection")
-	c.cancel()
-	close(c.done)
-	err := c.writer.Close()
-	if err != nil {
-		c.logger.Error("error closing writer", "error", err)
-	}
-	c.logger.Debug("SSE client connection closed")
-	return err
+	c.closeOnce.Do(func() {
+		c.logger.Debug("closing SSE client connection")
+		c.cancel()
+		close(c.done)
+		if err := c.writer.Close(); err != nil {
+			c.logger.Error("error closing writer", "error", err)
+		}
+		c.logger.Debug("SSE client connection closed")
+	})
+	return nil
 }
 
 // Done returns a channel that's closed when the client disconnects.
