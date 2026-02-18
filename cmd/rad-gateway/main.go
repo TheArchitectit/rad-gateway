@@ -20,6 +20,7 @@ import (
 	"radgateway/internal/middleware"
 	"radgateway/internal/provider"
 	"radgateway/internal/routing"
+	"radgateway/internal/secrets"
 	"radgateway/internal/trace"
 	"radgateway/internal/usage"
 )
@@ -62,13 +63,33 @@ func main() {
 	logger.Init(logger.DefaultConfig())
 	log := logger.WithComponent("main")
 
+	// Initialize Infisical secrets manager (optional)
+	var secretLoader *secrets.Loader
+	if loader, err := secrets.NewLoader(); err == nil {
+		secretLoader = loader
+		if loader.IsInfisicalEnabled() {
+			log.Info("infisical secrets manager enabled")
+		}
+		defer secretLoader.Close()
+	} else {
+		log.Warn("failed to initialize infisical", "error", err.Error())
+	}
+
 	cfg := config.Load()
 
 	// Initialize database (optional - for auth and persistence)
 	var database db.Database
 	var userRepo db.UserRepository
 	var dbDriverUsed string
-	dbDSN := getenv("RAD_DB_DSN", "radgateway.db")
+
+	// Try Infisical first, then environment, then fallback
+	dbDSN := "radgateway.db"
+	if secretLoader != nil {
+		dbDSN = secretLoader.LoadDatabaseDSN(dbDSN)
+	}
+	if dbDSN == "radgateway.db" {
+		dbDSN = getenv("RAD_DB_DSN", dbDSN)
+	}
 	dbDriver := getenv("RAD_DB_DRIVER", "sqlite")
 
 	if dbDSN != "" {
