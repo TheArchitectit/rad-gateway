@@ -35,6 +35,7 @@ type repositories struct {
 	quotas       *sqliteQuotaRepo
 	usageRecords *sqliteUsageRecordRepo
 	traceEvents  *sqliteTraceEventRepo
+	modelCards   *sqliteModelCardRepo
 }
 
 // NewSQLite creates a new SQLite database connection.
@@ -83,6 +84,7 @@ func NewSQLite(config Config) (*SQLiteDB, error) {
 		quotas:       &sqliteQuotaRepo{db: db},
 		usageRecords: &sqliteUsageRecordRepo{db: db},
 		traceEvents:  &sqliteTraceEventRepo{db: db},
+		modelCards:   &sqliteModelCardRepo{db: db},
 	}
 
 	return database, nil
@@ -130,6 +132,7 @@ func (s *SQLiteDB) APIKeys() APIKeyRepository         { return s.repos.apiKeys }
 func (s *SQLiteDB) Quotas() QuotaRepository           { return s.repos.quotas }
 func (s *SQLiteDB) UsageRecords() UsageRecordRepository { return s.repos.usageRecords }
 func (s *SQLiteDB) TraceEvents() TraceEventRepository { return s.repos.traceEvents }
+func (s *SQLiteDB) ModelCards() ModelCardRepository     { return s.repos.modelCards }
 
 // DB returns the underlying *sql.DB for migrations and advanced operations.
 func (s *SQLiteDB) DB() *sql.DB { return s.db }
@@ -637,4 +640,305 @@ func (r *sqliteTraceEventRepo) CreateBatch(ctx context.Context, events []TraceEv
 		}
 	}
 	return tx.Commit()
+}
+
+type sqliteModelCardRepo struct{ db *sql.DB }
+
+func (r *sqliteModelCardRepo) GetByID(ctx context.Context, id string) (*ModelCard, error) {
+	card := &ModelCard{}
+	query := `SELECT id, workspace_id, user_id, name, slug, description, card, version, status, created_at, updated_at
+		      FROM a2a_model_cards WHERE id = ?`
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&card.ID, &card.WorkspaceID, &card.UserID, &card.Name, &card.Slug,
+		&card.Description, &card.Card, &card.Version, &card.Status,
+		&card.CreatedAt, &card.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return card, err
+}
+
+func (r *sqliteModelCardRepo) GetBySlug(ctx context.Context, workspaceID, slug string) (*ModelCard, error) {
+	card := &ModelCard{}
+	query := `SELECT id, workspace_id, user_id, name, slug, description, card, version, status, created_at, updated_at
+		      FROM a2a_model_cards WHERE workspace_id = ? AND slug = ?`
+	err := r.db.QueryRowContext(ctx, query, workspaceID, slug).Scan(
+		&card.ID, &card.WorkspaceID, &card.UserID, &card.Name, &card.Slug,
+		&card.Description, &card.Card, &card.Version, &card.Status,
+		&card.CreatedAt, &card.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return card, err
+}
+
+func (r *sqliteModelCardRepo) GetByWorkspace(ctx context.Context, workspaceID string, limit, offset int) ([]ModelCard, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	query := `SELECT id, workspace_id, user_id, name, slug, description, card, version, status, created_at, updated_at
+		      FROM a2a_model_cards WHERE workspace_id = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+	rows, err := r.db.QueryContext(ctx, query, workspaceID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cards []ModelCard
+	for rows.Next() {
+		var c ModelCard
+		err := rows.Scan(
+			&c.ID, &c.WorkspaceID, &c.UserID, &c.Name, &c.Slug,
+			&c.Description, &c.Card, &c.Version, &c.Status,
+			&c.CreatedAt, &c.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		cards = append(cards, c)
+	}
+	return cards, rows.Err()
+}
+
+func (r *sqliteModelCardRepo) GetByUser(ctx context.Context, userID string, limit, offset int) ([]ModelCard, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	query := `SELECT id, workspace_id, user_id, name, slug, description, card, version, status, created_at, updated_at
+		      FROM a2a_model_cards WHERE user_id = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+	rows, err := r.db.QueryContext(ctx, query, userID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cards []ModelCard
+	for rows.Next() {
+		var c ModelCard
+		err := rows.Scan(
+			&c.ID, &c.WorkspaceID, &c.UserID, &c.Name, &c.Slug,
+			&c.Description, &c.Card, &c.Version, &c.Status,
+			&c.CreatedAt, &c.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		cards = append(cards, c)
+	}
+	return cards, rows.Err()
+}
+
+func (r *sqliteModelCardRepo) Create(ctx context.Context, card *ModelCard) error {
+	if card.ID == "" {
+		card.ID = generateUUID()
+	}
+	now := time.Now()
+	card.CreatedAt = now
+	card.UpdatedAt = now
+	card.Version = 1
+	if card.Status == "" {
+		card.Status = "active"
+	}
+
+	query := `INSERT INTO a2a_model_cards (id, workspace_id, user_id, name, slug, description, card, version, status, created_at, updated_at)
+		      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	_, err := r.db.ExecContext(ctx, query,
+		card.ID, card.WorkspaceID, card.UserID, card.Name, card.Slug,
+		card.Description, card.Card, card.Version, card.Status, card.CreatedAt, card.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to create model card: %w", err)
+	}
+	return r.createVersion(ctx, card, nil, card.UserID)
+}
+
+func (r *sqliteModelCardRepo) Update(ctx context.Context, card *ModelCard, changeReason *string, updatedBy *string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Get current card to capture version
+	current, err := r.GetByID(ctx, card.ID)
+	if err != nil {
+		return fmt.Errorf("failed to get current card: %w", err)
+	}
+	if current == nil {
+		return fmt.Errorf("model card not found: %s", card.ID)
+	}
+
+	card.Version = current.Version + 1
+	card.UpdatedAt = time.Now()
+
+	// Create version record
+	versionQuery := `INSERT INTO model_card_versions (id, model_card_id, workspace_id, user_id, version, name, slug, description, card, status, change_reason, created_by, created_at)
+		              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	_, err = tx.ExecContext(ctx, versionQuery,
+		generateUUID(), current.ID, current.WorkspaceID, current.UserID,
+		current.Version, current.Name, current.Slug, current.Description,
+		current.Card, current.Status, changeReason, updatedBy, current.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to create version record: %w", err)
+	}
+
+	// Update the card
+	updateQuery := `UPDATE a2a_model_cards
+		            SET name = ?, slug = ?, description = ?, card = ?,
+		                version = ?, status = ?, updated_at = ?
+		            WHERE id = ?`
+	_, err = tx.ExecContext(ctx, updateQuery,
+		card.Name, card.Slug, card.Description, card.Card,
+		card.Version, card.Status, card.UpdatedAt, card.ID)
+	if err != nil {
+		return fmt.Errorf("failed to update model card: %w", err)
+	}
+
+	return tx.Commit()
+}
+
+func (r *sqliteModelCardRepo) Delete(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE a2a_model_cards SET status = 'deleted', updated_at = ? WHERE id = ?`,
+		time.Now(), id)
+	return err
+}
+
+func (r *sqliteModelCardRepo) HardDelete(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM a2a_model_cards WHERE id = ?`, id)
+	return err
+}
+
+func (r *sqliteModelCardRepo) Search(ctx context.Context, params ModelCardSearchParams) ([]ModelCardSearchResult, error) {
+	if params.Limit <= 0 {
+		params.Limit = 100
+	}
+
+	// Build dynamic query (SQLite-compatible without JSONB operators)
+	query := `SELECT id, workspace_id, user_id, name, slug, description, card, version, status, created_at, updated_at
+		      FROM a2a_model_cards WHERE workspace_id = ?`
+	args := []interface{}{params.WorkspaceID}
+
+	if params.Status != "" {
+		query += " AND status = ?"
+		args = append(args, params.Status)
+	}
+
+	if params.Query != "" {
+		query += " AND (name LIKE ? OR description LIKE ?)"
+		args = append(args, "%"+params.Query+"%", "%"+params.Query+"%")
+	}
+
+	query += " ORDER BY updated_at DESC LIMIT ? OFFSET ?"
+	args = append(args, params.Limit, params.Offset)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []ModelCardSearchResult
+	for rows.Next() {
+		var c ModelCard
+		err := rows.Scan(
+			&c.ID, &c.WorkspaceID, &c.UserID, &c.Name, &c.Slug,
+			&c.Description, &c.Card, &c.Version, &c.Status,
+			&c.CreatedAt, &c.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, ModelCardSearchResult{ModelCard: c, Relevance: 1.0})
+	}
+	return results, rows.Err()
+}
+
+func (r *sqliteModelCardRepo) SearchByCapability(ctx context.Context, workspaceID string, capability string, limit, offset int) ([]ModelCard, error) {
+	// SQLite doesn't support JSONB operators natively
+	// Return all cards in workspace as fallback (filter in application layer if needed)
+	return r.GetByWorkspace(ctx, workspaceID, limit, offset)
+}
+
+func (r *sqliteModelCardRepo) SearchBySkill(ctx context.Context, workspaceID string, skillID string, limit, offset int) ([]ModelCard, error) {
+	// SQLite doesn't support JSONB array operators natively
+	// Return all cards in workspace as fallback (filter in application layer if needed)
+	return r.GetByWorkspace(ctx, workspaceID, limit, offset)
+}
+
+func (r *sqliteModelCardRepo) GetVersions(ctx context.Context, modelCardID string) ([]ModelCardVersion, error) {
+	query := `SELECT id, model_card_id, workspace_id, user_id, version, name, slug, description, card, status, change_reason, created_by, created_at
+		      FROM model_card_versions
+		      WHERE model_card_id = ? ORDER BY version DESC`
+	rows, err := r.db.QueryContext(ctx, query, modelCardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var versions []ModelCardVersion
+	for rows.Next() {
+		var v ModelCardVersion
+		err := rows.Scan(
+			&v.ID, &v.ModelCardID, &v.WorkspaceID, &v.UserID, &v.Version,
+			&v.Name, &v.Slug, &v.Description, &v.Card, &v.Status,
+			&v.ChangeReason, &v.CreatedBy, &v.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		versions = append(versions, v)
+	}
+	return versions, rows.Err()
+}
+
+func (r *sqliteModelCardRepo) GetVersion(ctx context.Context, modelCardID string, version int) (*ModelCardVersion, error) {
+	v := &ModelCardVersion{}
+	query := `SELECT id, model_card_id, workspace_id, user_id, version, name, slug, description, card, status, change_reason, created_by, created_at
+		      FROM model_card_versions WHERE model_card_id = ? AND version = ?`
+	err := r.db.QueryRowContext(ctx, query, modelCardID, version).Scan(
+		&v.ID, &v.ModelCardID, &v.WorkspaceID, &v.UserID, &v.Version,
+		&v.Name, &v.Slug, &v.Description, &v.Card, &v.Status,
+		&v.ChangeReason, &v.CreatedBy, &v.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return v, err
+}
+
+func (r *sqliteModelCardRepo) RestoreVersion(ctx context.Context, modelCardID string, version int, restoredBy *string) error {
+	v, err := r.GetVersion(ctx, modelCardID, version)
+	if err != nil {
+		return fmt.Errorf("failed to get version: %w", err)
+	}
+	if v == nil {
+		return fmt.Errorf("version not found: %d", version)
+	}
+
+	current, err := r.GetByID(ctx, modelCardID)
+	if err != nil {
+		return fmt.Errorf("failed to get current card: %w", err)
+	}
+	if current == nil {
+		return fmt.Errorf("model card not found: %s", modelCardID)
+	}
+
+	changeReason := "Restored from version " + fmt.Sprintf("%d", version)
+	card := &ModelCard{
+		ID:          current.ID,
+		WorkspaceID: current.WorkspaceID,
+		UserID:      current.UserID,
+		Name:        v.Name,
+		Slug:        v.Slug,
+		Description: v.Description,
+		Card:        v.Card,
+		Status:      v.Status,
+	}
+
+	return r.Update(ctx, card, &changeReason, restoredBy)
+}
+
+func (r *sqliteModelCardRepo) createVersion(ctx context.Context, card *ModelCard, changeReason *string, createdBy *string) error {
+	query := `INSERT INTO model_card_versions (id, model_card_id, workspace_id, user_id, version, name, slug, description, card, status, change_reason, created_by, created_at)
+		      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	_, err := r.db.ExecContext(ctx, query,
+		generateUUID(), card.ID, card.WorkspaceID, card.UserID,
+		card.Version, card.Name, card.Slug, card.Description,
+		card.Card, card.Status, changeReason, createdBy, card.CreatedAt)
+	return err
 }
