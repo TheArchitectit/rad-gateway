@@ -29,4 +29,5 @@ scripts/
 *.key
 *.pem
 secrets/
-
+!internal/secrets/
+!internal/secrets/*.go
