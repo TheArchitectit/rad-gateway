@@ -17,3 +17,28 @@ export { ProtectedRoute, PublicRoute } from './auth/ProtectedRoute';
 // Dashboard components
 export { MetricCard } from './dashboard/MetricCard';
 export { WorkspaceSelector } from './dashboard/WorkspaceSelector';
+
+export { Button } from './atoms/Button';
+export { Input } from './atoms/Input';
+export { Card } from './atoms/Card';
+export { Badge } from './atoms/Badge';
+export { Avatar } from './atoms/Avatar';
+
+export { FormField } from './forms/FormField';
+export { SelectField } from './forms/SelectField';
+export { ProviderForm } from './forms/ProviderForm';
+export { APIKeyForm, ShowKeyModal } from './forms/APIKeyForm';
+export { ProjectForm } from './forms/ProjectForm';
+
+export { FormField as FormFieldMolecule } from './molecules/FormField';
+export { SearchBar } from './molecules/SearchBar';
+export { Pagination } from './molecules/Pagination';
+export { StatusBadge } from './molecules/StatusBadge';
+export { EmptyState } from './molecules/EmptyState';
+
+export { Sidebar } from './organisms/Sidebar';
+export { TopNavigation } from './organisms/TopNavigation';
+export { DataTable } from './organisms/DataTable';
+
+export { AppLayout } from './templates/AppLayout';
+export { AuthLayout } from './templates/AuthLayout';

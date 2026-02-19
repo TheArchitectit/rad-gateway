@@ -16,7 +16,7 @@ import {
 } from '@tanstack/react-query';
 import { apiClient, APIError } from '../api/client';
 import { projectsKeys } from './keys';
-import type { Workspace, ApiResponse } from '../types';
+import type { Workspace } from '../types';
 
 // ============================================================================
 // Types
@@ -74,10 +74,10 @@ const fetchProjects = async (
     pageSize: filters.pageSize || 50,
   };
 
-  if (filters.status) params.status = filters.status;
-  if (filters.search) params.search = filters.search;
-  if (filters.sortBy) params.sortBy = filters.sortBy;
-  if (filters.sortOrder) params.sortOrder = filters.sortOrder;
+  if (filters.status) params['status'] = filters.status;
+  if (filters.search) params['search'] = filters.search;
+  if (filters.sortBy) params['sortBy'] = filters.sortBy;
+  if (filters.sortOrder) params['sortOrder'] = filters.sortOrder;
 
   return apiClient.get<ProjectListResponse>('/v0/admin/projects', { params });
 };
@@ -228,18 +228,18 @@ export function useUpdateProject(
           ...previousProject,
           ...data,
           updatedAt: new Date().toISOString(),
-        });
+        } as Workspace);
       }
 
       return { previousProject };
     },
-    onError: (err, { id }, context) => {
+    onError: (_err, { id }, context: any) => {
       // Rollback on error
       if (context?.previousProject) {
         queryClient.setQueryData(projectsKeys.detail(id), context.previousProject);
       }
     },
-    onSettled: (data, error, { id }) => {
+    onSettled: (_data, _error, { id }) => {
       // Always refetch after error or success
       queryClient.invalidateQueries({ queryKey: projectsKeys.detail(id) });
       queryClient.invalidateQueries({ queryKey: projectsKeys.lists() });
@@ -275,17 +275,17 @@ export function usePatchProject(
           ...previousProject,
           ...updates,
           updatedAt: new Date().toISOString(),
-        });
+        } as Workspace);
       }
 
       return { previousProject };
     },
-    onError: (err, { id }, context) => {
+    onError: (_err, { id }, context: any) => {
       if (context?.previousProject) {
         queryClient.setQueryData(projectsKeys.detail(id), context.previousProject);
       }
     },
-    onSettled: (data, error, { id }) => {
+    onSettled: (_data, _error, { id }) => {
       queryClient.invalidateQueries({ queryKey: projectsKeys.detail(id) });
       queryClient.invalidateQueries({ queryKey: projectsKeys.lists() });
     },

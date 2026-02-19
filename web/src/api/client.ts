@@ -6,18 +6,18 @@
  * Keeps it minimal - we can add complexity later if needed.
  */
 
-import { ApiError, ApiResponse } from '../types';
+import { ApiError } from '../types';
 
 // API base URL configuration
 // In development, we use the proxy configured in next.config.js
 // In production, use the actual backend URL
 const isDevelopment = process.env.NODE_ENV === 'development';
 const API_BASE_URL = isDevelopment
-  ? '/api/proxy'  // Uses Next.js rewrites to proxy to backend
-  : (process.env.NEXT_PUBLIC_API_URL || 'http://172.16.30.45:8090');
+  ? '/api/proxy'
+  : (process.env['NEXT_PUBLIC_API_URL'] || 'http://172.16.30.45:8090');
 
 interface RequestConfig extends RequestInit {
-  params?: Record<string, string | number | boolean | undefined>;
+  params?: Record<string, string | number | boolean | undefined> | undefined;
 }
 
 class APIClient {
@@ -110,7 +110,7 @@ class APIClient {
         ...this.getHeaders(),
         ...config.headers,
       },
-      body: data ? JSON.stringify(data) : undefined,
+      body: data ? JSON.stringify(data) : null,
     });
 
     return this.handleResponse<T>(response);
@@ -126,7 +126,7 @@ class APIClient {
         ...this.getHeaders(),
         ...config.headers,
       },
-      body: data ? JSON.stringify(data) : undefined,
+      body: data ? JSON.stringify(data) : null,
     });
 
     return this.handleResponse<T>(response);
@@ -142,7 +142,7 @@ class APIClient {
         ...this.getHeaders(),
         ...config.headers,
       },
-      body: data ? JSON.stringify(data) : undefined,
+      body: data ? JSON.stringify(data) : null,
     });
 
     return this.handleResponse<T>(response);
@@ -230,11 +230,11 @@ export const adminAPI = {
     status?: string;
     cursor?: string;
     limit?: number;
-  }) => apiClient.get<PaginatedResponse<UsageRecord>>('/v0/admin/logs', { params }),
+  }) => apiClient.get<PaginatedResponse<UsageRecord>>('/v0/admin/logs', params ? { params } : undefined),
 
   // Maintenance
-  getMaintenanceMode: () => apiClient.get<MaintenanceMode>('/v0/admin/maintenance'),
-  setMaintenanceMode: (data: MaintenanceMode) => apiClient.put<MaintenanceMode>('/v0/admin/maintenance', data),
+  getMaintenanceMode: () => apiClient.get<any>('/v0/admin/maintenance'),
+  setMaintenanceMode: (data: any) => apiClient.put<any>('/v0/admin/maintenance', data),
 };
 
 // Import types for API functions
@@ -249,5 +249,4 @@ import {
   ProviderHealth,
   UsageRecord,
   PaginatedResponse,
-  MaintenanceMode,
 } from '../types';

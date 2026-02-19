@@ -127,14 +127,18 @@ export function useFetch<T>(url: string, options: UseFetchOptions = {}): UseFetc
   }, [url, fetchOptions, onSuccess, onError]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      return;
+    }
 
     fetchData();
 
-    if (refetchInterval) {
-      const intervalId = setInterval(fetchData, refetchInterval);
-      return () => clearInterval(intervalId);
+    if (!refetchInterval) {
+      return;
     }
+
+    const intervalId = setInterval(fetchData, refetchInterval);
+    return () => clearInterval(intervalId);
   }, [enabled, refetchInterval, fetchData]);
 
   return {

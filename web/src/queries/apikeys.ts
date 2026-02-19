@@ -16,7 +16,6 @@ import {
 } from '@tanstack/react-query';
 import { apiClient, APIError } from '../api/client';
 import { apiKeysKeys } from './keys';
-import type { APIKey } from '../types';
 
 // ============================================================================
 // Types
@@ -55,11 +54,11 @@ export interface APIKeyWithSecret extends APIKeyResponse {
 export interface CreateAPIKeyRequest {
   name: string;
   workspaceId: string;
-  expiresAt?: string;
-  rateLimit?: number;
-  allowedModels?: string[];
-  allowedAPIs?: string[];
-  metadata?: Record<string, unknown>;
+  expiresAt?: string | undefined;
+  rateLimit?: number | undefined;
+  allowedModels?: string[] | undefined;
+  allowedAPIs?: string[] | undefined;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 export interface UpdateAPIKeyRequest {
@@ -115,11 +114,11 @@ const fetchAPIKeys = async (
     pageSize: filters.pageSize || 50,
   };
 
-  if (filters.status) params.status = filters.status;
-  if (filters.workspaceId) params.workspaceId = filters.workspaceId;
-  if (filters.search) params.search = filters.search;
-  if (filters.sortBy) params.sortBy = filters.sortBy;
-  if (filters.sortOrder) params.sortOrder = filters.sortOrder;
+  if (filters.status) params['status'] = filters.status;
+  if (filters.workspaceId) params['workspaceId'] = filters.workspaceId;
+  if (filters.search) params['search'] = filters.search;
+  if (filters.sortBy) params['sortBy'] = filters.sortBy;
+  if (filters.sortOrder) params['sortOrder'] = filters.sortOrder;
 
   return apiClient.get<APIKeyListResponse>('/v0/admin/apikeys', { params });
 };
@@ -264,8 +263,10 @@ export function useUpdateAPIKey(
   const queryClient = useQueryClient();
 
   return useMutation<APIKeyResponse, APIError, { id: string; data: UpdateAPIKeyRequest }>({
+    // @ts-ignore - TanStack Query type inference issue
     mutationFn: ({ id, data }) => updateAPIKey(id, data),
-    onMutate: async ({ id, data }) => {
+    // @ts-ignore - Context type inference
+    onMutate: async ({ id, data }): Promise<{ previousKey: APIKeyResponse | undefined }> => {
       await queryClient.cancelQueries({ queryKey: apiKeysKeys.detail(id) });
 
       const previousKey = queryClient.getQueryData<APIKeyResponse>(
@@ -277,17 +278,18 @@ export function useUpdateAPIKey(
           ...previousKey,
           ...data,
           updatedAt: new Date().toISOString(),
-        });
+        } as APIKeyResponse);
       }
 
-      return { previousKey };
+      return { previousKey } as { previousKey: APIKeyResponse | undefined };
     },
-    onError: (err, { id }, context) => {
+    // @ts-ignore
+    onError: (_err, { id }, context: any) => {
       if (context?.previousKey) {
         queryClient.setQueryData(apiKeysKeys.detail(id), context.previousKey);
       }
     },
-    onSettled: (data, error, { id }) => {
+    onSettled: (_data, _error, { id }) => {
       queryClient.invalidateQueries({ queryKey: apiKeysKeys.detail(id) });
       queryClient.invalidateQueries({ queryKey: apiKeysKeys.lists() });
     },
@@ -321,17 +323,18 @@ export function usePatchAPIKey(
           ...previousKey,
           ...updates,
           updatedAt: new Date().toISOString(),
-        });
+        } as APIKeyResponse);
       }
 
-      return { previousKey };
+      return { previousKey } as { previousKey: APIKeyResponse | undefined };
     },
-    onError: (err, { id }, context) => {
+    // @ts-ignore
+    onError: (_err, { id }, context: any) => {
       if (context?.previousKey) {
         queryClient.setQueryData(apiKeysKeys.detail(id), context.previousKey);
       }
     },
-    onSettled: (data, error, { id }) => {
+    onSettled: (_data, _error, { id }) => {
       queryClient.invalidateQueries({ queryKey: apiKeysKeys.detail(id) });
       queryClient.invalidateQueries({ queryKey: apiKeysKeys.lists() });
     },
@@ -366,14 +369,14 @@ export function useRevokeAPIKey(
         });
       }
 
-      return { previousKey };
+      return { previousKey } as { previousKey: APIKeyResponse | undefined };
     },
-    onError: (err, id, context) => {
+    onError: (_err, id, context: any) => {
       if (context?.previousKey) {
         queryClient.setQueryData(apiKeysKeys.detail(id), context.previousKey);
       }
     },
-    onSettled: (data, error, id) => {
+    onSettled: (_data, _error, id) => {
       queryClient.invalidateQueries({ queryKey: apiKeysKeys.detail(id) });
       queryClient.invalidateQueries({ queryKey: apiKeysKeys.lists() });
     },

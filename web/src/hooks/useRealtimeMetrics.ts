@@ -13,8 +13,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { useAuth } from './useAuth';
-import { useSSE, useSSEEvent, useSSEEvents } from './useSSE';
+import { useAuthStore } from '../stores/authStore';
+import { useSSE, useSSEEvent } from './useSSE';
 import type {
   RealtimeUsageMetrics,
   ProviderHealthUpdate,
@@ -160,7 +160,7 @@ type RealtimeOptions = Partial<typeof DEFAULT_OPTIONS>;
 export function useRealtimeMetrics(options: RealtimeOptions = {}): RealtimeMetricsReturn {
   const opts = useMemo(() => ({ ...DEFAULT_OPTIONS, ...options }), [options]);
 
-  const { token } = useAuth();
+  const token = useAuthStore((state) => state.token);
   const isMountedRef = useRef(true);
 
   // Data state
@@ -196,7 +196,7 @@ export function useRealtimeMetrics(options: RealtimeOptions = {}): RealtimeMetri
   }, [lastEventAt, opts.dataFreshnessThreshold]);
 
   // Setup SSE with multi-event subscription
-  const { state, lastMessage, error, reconnectAttempts, isReconnecting, connect, disconnect } = useSSE(
+  const { state, error, reconnectAttempts, isReconnecting, connect, disconnect } = useSSE(
     '/v0/admin/events',
     {
       events: ['usage:realtime', 'provider:health', 'provider:circuit', 'system:alert'],
@@ -384,7 +384,7 @@ export function useRealtimeMetric(
   error: Error | null;
   reconnect: () => void;
 } {
-  const { token } = useAuth();
+  const token = useAuthStore((state) => state.token);
   const [history, setHistory] = useState<{ timestamp: Date; value: number }[]>([]);
   const opts = useMemo(() => ({ ...DEFAULT_OPTIONS, ...options }), [options]);
 
@@ -443,7 +443,7 @@ export function useProviderHealth(
   connected: boolean;
   error: Error | null;
 } {
-  const { token } = useAuth();
+  const token = useAuthStore((state) => state.token);
   const [health, setHealth] = useState<ProviderHealthUpdate | null>(null);
 
   const { state, error } = useSSE('/v0/admin/events', {
@@ -496,7 +496,7 @@ export function useCircuitBreaker(
   isHalfOpen: boolean;
   connected: boolean;
 } {
-  const { token } = useAuth();
+  const token = useAuthStore((state) => state.token);
   const [cbState, setCbState] = useState<CircuitBreakerUpdate | null>(null);
 
   const { state: connectionState } = useSSE('/v0/admin/events', {
@@ -553,7 +553,7 @@ export function useSystemAlerts(
   markAllRead: () => void;
   connected: boolean;
 } {
-  const { token } = useAuth();
+  const token = useAuthStore((state) => state.token);
   const { severity, maxAlerts = 50 } = options;
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
