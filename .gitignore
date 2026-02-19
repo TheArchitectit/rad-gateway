@@ -11,6 +11,7 @@ worktrees/
 # Build artifacts
 bin/
 dist/
+rad-gateway
 
 # OS/editor
 .DS_Store
