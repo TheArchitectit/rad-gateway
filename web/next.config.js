@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'export',
+  distDir: 'dist',
   async rewrites() {
     // Proxy API requests to the backend during development
     const apiUrl = process.env.API_BASE_URL || 'http://172.16.30.45:8090';

@@ -96,7 +96,7 @@ export function useApiKeys(): UseApiKeysReturn {
         keyPreview: `rad_****_${Math.random().toString(36).substr(2, 4)}`,
         permissions: data.permissions,
         rateLimit: data.rateLimit || 100,
-        usageLimit: data.usageLimit,
+        ...(data.usageLimit !== undefined && { usageLimit: data.usageLimit }),
         currentUsage: 0,
         createdAt: new Date().toISOString(),
         isActive: true,

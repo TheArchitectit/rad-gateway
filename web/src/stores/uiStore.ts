@@ -178,32 +178,32 @@ export const showNotification = {
     useUIStore.getState().addNotification({
       type: 'success',
       title,
-      message,
-      action,
+      ...(message && { message }),
+      ...(action && { action }),
     });
   },
   error: (title: string, message?: string, action?: Notification['action']) => {
     useUIStore.getState().addNotification({
       type: 'error',
       title,
-      message,
-      action,
+      ...(message && { message }),
+      ...(action && { action }),
     });
   },
   warning: (title: string, message?: string, action?: Notification['action']) => {
     useUIStore.getState().addNotification({
       type: 'warning',
       title,
-      message,
-      action,
+      ...(message && { message }),
+      ...(action && { action }),
     });
   },
   info: (title: string, message?: string, action?: Notification['action']) => {
     useUIStore.getState().addNotification({
       type: 'info',
       title,
-      message,
-      action,
+      ...(message && { message }),
+      ...(action && { action }),
     });
   },
 };

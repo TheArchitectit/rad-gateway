@@ -15,6 +15,7 @@ export interface User {
   avatar?: string;
   createdAt: string;
   lastLoginAt?: string;
+  permissions?: string[];
 }
 
 export type UserRole = 'admin' | 'developer' | 'viewer';
@@ -402,6 +403,13 @@ export interface PaginatedResponse<T> {
 // ============================================================================
 // Configuration Types
 // ============================================================================
+
+export interface ModelCandidate {
+  id: string;
+  name: string;
+  provider: string;
+  capabilities: string[];
+}
 
 export interface GatewayConfig {
   listenAddr: string;

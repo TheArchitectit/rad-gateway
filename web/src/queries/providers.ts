@@ -159,10 +159,10 @@ export function useProvidersByStatus() {
     ...rest,
     data: data?.providers || [],
     byStatus: grouped || {},
-    healthy: grouped?.healthy || [],
-    degraded: grouped?.degraded || [],
-    unhealthy: grouped?.unhealthy || [],
-    disabled: grouped?.disabled || [],
+    healthy: grouped?.['healthy'] || [],
+    degraded: grouped?.['degraded'] || [],
+    unhealthy: grouped?.['unhealthy'] || [],
+    disabled: grouped?.['disabled'] || [],
   };
 }
 
@@ -233,4 +233,139 @@ export function useRefreshProviders() {
   return () => {
     queryClient.invalidateQueries({ queryKey: providersKeys.all });
   };
+}
+
+// ============================================================================
+// CRUD Mutations
+// ============================================================================
+
+export interface CreateProviderRequest {
+  name: string;
+  slug: string;
+  providerType: 'openai' | 'anthropic' | 'gemini';
+  baseUrl?: string | undefined;
+  apiKey: string;
+  config?: Record<string, unknown>;
+  priority?: number;
+  weight?: number;
+}
+
+export interface UpdateProviderRequest {
+  name?: string;
+  baseUrl?: string | undefined;
+  apiKey?: string;
+  config?: Record<string, unknown>;
+  status?: 'healthy' | 'degraded' | 'unhealthy' | 'disabled';
+  priority?: number;
+  weight?: number;
+}
+
+export interface CreateProviderResponse extends Provider {
+  apiKey?: string; // Only returned on creation
+}
+
+const createProvider = async (
+  data: CreateProviderRequest
+): Promise<CreateProviderResponse> => {
+  return apiClient.post<CreateProviderResponse>('/v0/admin/providers', data);
+};
+
+const updateProvider = async (
+  id: string,
+  data: UpdateProviderRequest
+): Promise<Provider> => {
+  return apiClient.put<Provider>(`/v0/admin/providers/${id}`, data);
+};
+
+const deleteProvider = async (id: string): Promise<void> => {
+  return apiClient.delete<void>(`/v0/admin/providers/${id}`);
+};
+
+const testProviderConnection = async (
+  id: string
+): Promise<{ success: boolean; message: string; latency?: number }> => {
+  return apiClient.post<{ success: boolean; message: string; latency?: number }>(
+    `/v0/admin/providers/${id}/test`
+  );
+};
+
+/**
+ * Hook to create a new provider.
+ * Optimistically updates the provider list.
+ */
+export function useCreateProvider(
+  options?: UseMutationOptions<CreateProviderResponse, APIError, CreateProviderRequest>
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation<CreateProviderResponse, APIError, CreateProviderRequest>({
+    mutationFn: createProvider,
+    onSuccess: (data) => {
+      // Invalidate provider list
+      queryClient.invalidateQueries({ queryKey: providersKeys.lists() });
+      // Prefetch the new provider
+      queryClient.setQueryData(providersKeys.detail(data.name), data);
+    },
+    ...options,
+  });
+}
+
+/**
+ * Hook to update an existing provider.
+ */
+export function useUpdateProvider(
+  options?: UseMutationOptions<Provider, APIError, { id: string; data: UpdateProviderRequest }>
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation<Provider, APIError, { id: string; data: UpdateProviderRequest }>({
+    mutationFn: ({ id, data }) => updateProvider(id, data),
+    onSuccess: (data, variables) => {
+      // Update the detail cache
+      queryClient.setQueryData(providersKeys.detail(data.name), data);
+      // Invalidate the list
+      queryClient.invalidateQueries({ queryKey: providersKeys.lists() });
+      // Invalidate the specific provider
+      queryClient.invalidateQueries({ queryKey: providersKeys.detail(variables.id) });
+    },
+    ...options,
+  });
+}
+
+/**
+ * Hook to delete a provider.
+ */
+export function useDeleteProvider(
+  options?: UseMutationOptions<void, APIError, string>
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, APIError, string>({
+    mutationFn: deleteProvider,
+    onSuccess: () => {
+      // Invalidate provider list
+      queryClient.invalidateQueries({ queryKey: providersKeys.lists() });
+    },
+    ...options,
+  });
+}
+
+/**
+ * Hook to test provider connection.
+ */
+export function useTestProviderConnection(
+  options?: UseMutationOptions<
+    { success: boolean; message: string; latency?: number },
+    APIError,
+    string
+  >
+) {
+  return useMutation<
+    { success: boolean; message: string; latency?: number },
+    APIError,
+    string
+  >({
+    mutationFn: testProviderConnection,
+    ...options,
+  });
 }
