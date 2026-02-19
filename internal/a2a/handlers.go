@@ -12,15 +12,25 @@ import (
 
 // Handlers provides HTTP handlers for A2A Model Card operations.
 type Handlers struct {
-	repo Repository
-	log  *slog.Logger
+	repo      Repository
+	taskStore TaskStore
+	log       *slog.Logger
 }
 
 // NewHandlers creates new A2A handlers with the given repository.
 func NewHandlers(repo Repository) *Handlers {
 	return &Handlers{
-		repo: repo,
-		log:  logger.WithComponent("a2a_handlers"),
+		repo:      repo,
+		taskStore: nil,
+		log:       logger.WithComponent("a2a_handlers"),
+	}
+}
+
+func NewHandlersWithTaskStore(repo Repository, taskStore TaskStore) *Handlers {
+	return &Handlers{
+		repo:      repo,
+		taskStore: taskStore,
+		log:       logger.WithComponent("a2a_handlers"),
 	}
 }
 
@@ -29,6 +39,15 @@ func (h *Handlers) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/v1/a2a/model-cards", h.handleModelCards)
 	mux.HandleFunc("/v1/a2a/model-cards/", h.handleModelCardByID)
 	mux.HandleFunc("/v1/a2a/projects/", h.handleProjectModelCards)
+	mux.HandleFunc("/a2a/model-cards", h.handleModelCards)
+	mux.HandleFunc("/a2a/model-cards/", h.handleModelCardByID)
+	mux.HandleFunc("/a2a/projects/", h.handleProjectModelCards)
+	mux.HandleFunc("/v1/a2a/tasks/send", h.handleSendTask)
+	mux.HandleFunc("/v1/a2a/tasks/sendSubscribe", h.handleSendTaskSubscribe)
+	mux.HandleFunc("/v1/a2a/tasks/", h.handleTaskByID)
+	mux.HandleFunc("/a2a/tasks/send", h.handleSendTask)
+	mux.HandleFunc("/a2a/tasks/sendSubscribe", h.handleSendTaskSubscribe)
+	mux.HandleFunc("/a2a/tasks/", h.handleTaskByID)
 }
 
 // handleModelCards handles listing and creating model cards.
@@ -48,6 +67,9 @@ func (h *Handlers) handleModelCards(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) handleModelCardByID(w http.ResponseWriter, r *http.Request) {
 	// Extract ID from path: /v1/a2a/model-cards/{id}
 	path := strings.TrimPrefix(r.URL.Path, "/v1/a2a/model-cards/")
+	if path == r.URL.Path {
+		path = strings.TrimPrefix(r.URL.Path, "/a2a/model-cards/")
+	}
 	id := strings.Split(path, "/")[0]
 
 	if id == "" {
@@ -80,6 +102,9 @@ func (h *Handlers) handleProjectModelCards(w http.ResponseWriter, r *http.Reques
 
 	// Extract project ID from path
 	path := strings.TrimPrefix(r.URL.Path, "/v1/a2a/projects/")
+	if path == r.URL.Path {
+		path = strings.TrimPrefix(r.URL.Path, "/a2a/projects/")
+	}
 	parts := strings.Split(path, "/")
 	if len(parts) < 2 || parts[1] != "model-cards" {
 		w.WriteHeader(http.StatusNotFound)

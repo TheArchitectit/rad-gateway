@@ -53,6 +53,8 @@ func (h *Handlers) Register(mux *http.ServeMux) {
 
 	// Providers
 	NewProviderHandler().RegisterRoutes(mux)
+
+	NewReportingHandler().RegisterRoutes(mux)
 }
 
 func (h *Handlers) getConfig(w http.ResponseWriter, r *http.Request) {
