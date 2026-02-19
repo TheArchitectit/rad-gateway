@@ -135,11 +135,11 @@ const fetchUsage = async (
     pageSize: filters.pageSize || 50,
   };
 
-  if (filters.startTime) params.startTime = filters.startTime;
-  if (filters.endTime) params.endTime = filters.endTime;
-  if (filters.apiKeyName) params.apiKeyId = filters.apiKeyName;
-  if (filters.provider) params.providerId = filters.provider;
-  if (filters.status) params.status = filters.status;
+  if (filters.startTime) params['startTime'] = filters.startTime;
+  if (filters.endTime) params['endTime'] = filters.endTime;
+  if (filters.apiKeyName) params['apiKeyId'] = filters.apiKeyName;
+  if (filters.provider) params['providerId'] = filters.provider;
+  if (filters.status) params['status'] = filters.status;
 
   return apiClient.get<UsageListResponse>('/v0/admin/usage', { params });
 };
@@ -152,10 +152,10 @@ const fetchUsageRecords = async (
     pageSize: filters.pageSize || 100,
   };
 
-  if (filters.workspaceId) params.workspaceId = filters.workspaceId;
-  if (filters.apiKeyId) params.apiKeyId = filters.apiKeyId;
-  if (filters.startTime) params.startTime = filters.startTime;
-  if (filters.endTime) params.endTime = filters.endTime;
+  if (filters.workspaceId) params['workspaceId'] = filters.workspaceId;
+  if (filters.apiKeyId) params['apiKeyId'] = filters.apiKeyId;
+  if (filters.startTime) params['startTime'] = filters.startTime;
+  if (filters.endTime) params['endTime'] = filters.endTime;
 
   return apiClient.get<UsageListResponse>('/v0/admin/usage/records', { params });
 };
@@ -172,9 +172,9 @@ const fetchUsageTrends = async (params: {
   interval?: 'minute' | 'hour' | 'day';
 }): Promise<UsageTrendResponse> => {
   const queryParams: Record<string, string> = {};
-  if (params.startTime) queryParams.startTime = params.startTime;
-  if (params.endTime) queryParams.endTime = params.endTime;
-  if (params.interval) queryParams.interval = params.interval;
+  if (params.startTime) queryParams['startTime'] = params.startTime;
+  if (params.endTime) queryParams['endTime'] = params.endTime;
+  if (params.interval) queryParams['interval'] = params.interval;
 
   return apiClient.get<UsageTrendResponse>('/v0/admin/usage/trends', {
     params: queryParams,
@@ -187,9 +187,9 @@ const fetchUsageSummary = async (filters?: {
   endTime?: string;
 }): Promise<UsageSummary> => {
   const params: Record<string, string> = {};
-  if (filters?.workspaceId) params.workspaceId = filters.workspaceId;
-  if (filters?.startTime) params.startTime = filters.startTime;
-  if (filters?.endTime) params.endTime = filters.endTime;
+  if (filters?.workspaceId) params['workspaceId'] = filters.workspaceId;
+  if (filters?.startTime) params['startTime'] = filters.startTime;
+  if (filters?.endTime) params['endTime'] = filters.endTime;
 
   return apiClient.get<UsageSummary>('/v0/admin/usage/summary', { params });
 };
@@ -252,10 +252,10 @@ export function useUsageAdvanced(
 ) {
   return useQuery<UsageListResponse, APIError>({
     queryKey: usageKeys.aggregation(request.groupBy || [], {
-      startTime: request.startTime,
-      endTime: request.endTime,
-      provider: request.providerId,
-      status: request.status as 'success' | 'error' | 'timeout' | undefined,
+      ...(request.startTime && { startTime: request.startTime }),
+      ...(request.endTime && { endTime: request.endTime }),
+      ...(request.providerId && { provider: request.providerId }),
+      ...(request.status && { status: request.status as 'success' | 'error' | 'timeout' }),
     }),
     queryFn: () => queryUsageAdvanced(request),
     enabled: !!request.groupBy?.length,
@@ -329,8 +329,10 @@ export function useExportStatus(
     queryKey: usageKeys.export(exportId || ''),
     queryFn: () => fetchExportStatus(exportId!),
     enabled: !!exportId,
-    refetchInterval: (data) =>
-      data?.status === 'pending' || data?.status === 'processing' ? 2000 : false,
+    refetchInterval: (data) => {
+      const response = (data as unknown) as UsageExportResponse | undefined;
+      return response?.status === 'pending' || response?.status === 'processing' ? 2000 : false;
+    },
     ...options,
   });
 }

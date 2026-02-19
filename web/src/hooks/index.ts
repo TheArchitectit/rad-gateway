@@ -47,10 +47,10 @@ export {
 
 // UI hooks
 export {
-  useTheme,
+  useThemeManager,
   useSidebar,
   useModal,
-  useNotifications,
+  useNotificationsManager,
   useLoading,
   useDebounce,
   useLocalStorage,

@@ -8,9 +8,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { APIError } from '../api/client';
+import type { User } from '../types';
 
 interface UseAuthReturn {
-  user: ReturnType<typeof useAuthStore>['user'];
+  user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
@@ -98,7 +99,7 @@ export function useLoginForm(): UseLoginFormReturn {
 interface UseRequireAuthReturn {
   isAuthenticated: boolean;
   isLoading: boolean;
-  user: ReturnType<typeof useAuthStore>['user'];
+  user: User | null;
 }
 
 /**

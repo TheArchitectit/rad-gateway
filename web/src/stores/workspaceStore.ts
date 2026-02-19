@@ -196,7 +196,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           // Set first workspace as current if none selected
           const { current } = get();
           if (!current && mockWorkspaces.length > 0) {
-            set({ current: mockWorkspaces[0] });
+            set({ current: mockWorkspaces[0] || null });
           }
         } catch (err) {
           const message = err instanceof APIError
@@ -226,8 +226,8 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             id: `ws-${Date.now()}`,
             name: data.name || 'New Workspace',
             slug: data.slug || `workspace-${Date.now()}`,
-            description: data.description,
-            logo: data.logo,
+            ...(data.description && { description: data.description }),
+            ...(data.logo && { logo: data.logo }),
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             ownerId: 'user-1',

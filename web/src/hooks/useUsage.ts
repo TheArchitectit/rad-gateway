@@ -44,7 +44,7 @@ export function useUsage(initialFilters?: UsageFilters): UseUsageReturn {
       try {
         const params = {
           ...filters,
-          cursor,
+          ...(cursor && { cursor }),
           limit: 50,
         };
 
