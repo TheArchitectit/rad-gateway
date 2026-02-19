@@ -55,6 +55,7 @@ func (h *Handlers) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/v1/embeddings", h.embeddings)
 	mux.HandleFunc("/v1/images/generations", h.images)
 	mux.HandleFunc("/v1/audio/transcriptions", h.transcriptions)
+	mux.HandleFunc("/v1/audio/speech", h.speech)
 	mux.HandleFunc("/v1/models", h.models)
 	mux.HandleFunc("/v1beta/models/", h.geminiCompat)
 }
@@ -180,6 +181,19 @@ func (h *Handlers) transcriptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, _, err := h.gateway.Handle(r.Context(), "transcriptions", "whisper-1", map[string]any{"kind": "audio_transcription"})
+	if err != nil {
+		upstreamError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, out.Payload)
+}
+
+func (h *Handlers) speech(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	out, _, err := h.gateway.Handle(r.Context(), "speech", "gpt-4o-mini-tts", map[string]any{"kind": "audio_speech"})
 	if err != nil {
 		upstreamError(w, err)
 		return

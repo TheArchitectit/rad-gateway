@@ -17,7 +17,9 @@ import (
 	"radgateway/internal/core"
 	"radgateway/internal/db"
 	"radgateway/internal/logger"
+	"radgateway/internal/mcp"
 	"radgateway/internal/middleware"
+	"radgateway/internal/oauth"
 	"radgateway/internal/provider"
 	"radgateway/internal/routing"
 	"radgateway/internal/secrets"
@@ -157,6 +159,7 @@ func main() {
 
 	// Initialize hybrid repository if database and cache are available
 	var a2aRepo a2a.Repository
+	var a2aTaskStore a2a.TaskStore
 	if database != nil {
 		// Get underlying SQL DB for hybrid repository
 		type sqlDBer interface {
@@ -169,6 +172,7 @@ func main() {
 				cacheImpl = &a2aCacheAdapter{typed: modelCardCache}
 			}
 			a2aRepo = a2a.NewHybridRepository(sqlDB.DB(), cacheImpl, log)
+			a2aTaskStore = a2a.NewPostgresTaskStore(sqlDB.DB())
 			log.Info("A2A hybrid repository initialized")
 		} else {
 			log.Warn("database does not expose *sql.DB, A2A repository not initialized")
@@ -199,10 +203,11 @@ func main() {
 
 	// Register API handlers (OpenAI-compatible endpoints)
 	api.NewHandlers(gateway).Register(apiMux)
+	mcp.NewHandler().Register(apiMux)
 
 	// Register A2A handlers (if repository is initialized)
 	if a2aRepo != nil {
-		a2aHandlers := a2a.NewHandlers(a2aRepo)
+		a2aHandlers := a2a.NewHandlersWithTaskStore(a2aRepo, a2aTaskStore)
 		a2aHandlers.Register(apiMux)
 		log.Info("A2A handlers registered")
 	}
@@ -226,6 +231,8 @@ func main() {
 	// Combine muxes with appropriate authentication
 	// Order matters: more specific paths first
 	combinedMux := http.NewServeMux()
+	oauthHandler := api.NewOAuthHandler(oauth.NewManager())
+	oauthHandler.Register(combinedMux)
 
 	// Public endpoints (no auth required)
 	combinedMux.Handle("/v1/auth/", http.StripPrefix("/v1/auth", publicMux))
@@ -257,6 +264,8 @@ func main() {
 		w.Write([]byte(response))
 	}))
 
+	a2a.NewAgentCardHandler(getenv("RAD_PUBLIC_BASE_URL", "http://localhost"), "0.1.0").Register(combinedMux)
+
 	// Admin endpoints require JWT authentication
 	jwtMiddleware := auth.NewMiddleware(jwtManager)
 	adminHandler := jwtMiddleware.Authenticate(adminMux)
@@ -266,6 +275,8 @@ func main() {
 	// API endpoints require API key authentication (except health)
 	apiHandler := apiKeyAuth.Require(apiMux)
 	combinedMux.Handle("/v1/", http.StripPrefix("/v1", apiHandler))
+	combinedMux.Handle("/a2a/", apiHandler)
+	combinedMux.Handle("/mcp/", apiHandler)
 
 	// Apply global middleware
 	handler := middleware.WithRequestContext(combinedMux)
