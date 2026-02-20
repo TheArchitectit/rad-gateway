@@ -31,7 +31,7 @@ export function MetricCard({
 }: MetricCardProps) {
   if (isLoading) {
     return (
-      <div className={`p-4 rounded-lg border border-gray-200 dark:border-gray-700 ${className}`}>
+      <div className={`ui-panel rounded-xl p-4 ${className}`}>
         <Skeleton className="h-4 w-24 mb-2" />
         <Skeleton className="h-8 w-32 mb-2" />
         <Skeleton className="h-3 w-16" />
@@ -40,21 +40,21 @@ export function MetricCard({
   }
 
   return (
-    <div className={`p-4 rounded-lg border border-gray-200 dark:border-gray-700 ${className}`}>
+    <div className={`ui-panel rounded-xl p-4 ${className}`}>
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">
+        <h3 className="text-sm font-medium text-[var(--ink-500)]">
           {title}
         </h3>
-        {icon && <div className="text-gray-400">{icon}</div>}
+        {icon && <div className="text-[var(--brass-700)]">{icon}</div>}
       </div>
       <div className="mt-2 flex items-baseline">
-        <span className="text-2xl font-semibold text-gray-900 dark:text-white">
+        <span className="text-2xl font-semibold text-[var(--ink-900)]">
           {value}
         </span>
         {change && (
           <span
             className={`ml-2 text-sm font-medium ${
-              change.positive ? 'text-green-600' : 'text-red-600'
+              change.positive ? 'text-[var(--status-normal)]' : 'text-[var(--status-critical)]'
             }`}
           >
             {change.positive ? '+' : ''}
@@ -63,7 +63,7 @@ export function MetricCard({
         )}
       </div>
       {description && (
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        <p className="mt-1 text-sm text-[var(--ink-500)]">
           {description}
         </p>
       )}

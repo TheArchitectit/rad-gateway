@@ -1,9 +1,19 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Cinzel, Source_Sans_3 } from 'next/font/google';
 import './globals.css';
 import { QueryProvider } from '@/queries/QueryProvider';
 
-const inter = Inter({ subsets: ['latin'] });
+const displayFont = Cinzel({
+  subsets: ['latin'],
+  variable: '--font-display',
+  weight: ['500', '700'],
+});
+
+const bodyFont = Source_Sans_3({
+  subsets: ['latin'],
+  variable: '--font-body',
+  weight: ['400', '500', '600', '700'],
+});
 
 export const metadata: Metadata = {
   title: 'RAD Gateway Admin',
@@ -17,7 +27,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={`${displayFont.variable} ${bodyFont.variable}`}>
         <QueryProvider>
           {children}
         </QueryProvider>

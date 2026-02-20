@@ -1,7 +1,7 @@
 import React from 'react';
 import { Badge } from '../atoms/Badge';
 
-type Status = 'healthy' | 'degraded' | 'unhealthy' | 'pending' | 'active' | 'inactive' | 'closed' | 'open' | 'half-open';
+type Status = 'healthy' | 'degraded' | 'unhealthy' | 'disabled' | 'pending' | 'active' | 'inactive' | 'closed' | 'open' | 'half-open';
 
 interface StatusBadgeProps {
   status: Status;
@@ -12,6 +12,7 @@ const statusConfig: Record<Status, { color: 'success' | 'warning' | 'error' | 'i
   healthy: { color: 'success', label: 'Healthy' },
   degraded: { color: 'warning', label: 'Degraded' },
   unhealthy: { color: 'error', label: 'Unhealthy' },
+  disabled: { color: 'default', label: 'Disabled' },
   pending: { color: 'info', label: 'Pending' },
   active: { color: 'success', label: 'Active' },
   inactive: { color: 'default', label: 'Inactive' },
@@ -27,8 +28,8 @@ export function StatusBadge({ status, showPulse = false }: StatusBadgeProps) {
     <div className="flex items-center gap-2">
       {showPulse && status === 'healthy' && (
         <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[rgba(47,122,79,0.55)] opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--status-normal)]" />
         </span>
       )}
       <Badge color={config.color}>{config.label}</Badge>

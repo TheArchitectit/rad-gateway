@@ -16,11 +16,11 @@ export function Badge({
   className = '',
 }: BadgeProps) {
   const colorStyles: Record<BadgeColor, string> = {
-    success: 'bg-green-100 text-green-800',
-    warning: 'bg-yellow-100 text-yellow-800',
-    error: 'bg-red-100 text-red-800',
-    info: 'bg-blue-100 text-blue-800',
-    default: 'bg-gray-100 text-gray-800',
+    success: 'border border-[rgba(47,122,79,0.3)] bg-[rgba(47,122,79,0.12)] text-[var(--status-normal)]',
+    warning: 'border border-[rgba(182,109,29,0.3)] bg-[rgba(182,109,29,0.12)] text-[var(--status-warning)]',
+    error: 'border border-[rgba(152,43,33,0.3)] bg-[rgba(152,43,33,0.12)] text-[var(--status-critical)]',
+    info: 'border border-[rgba(47,95,132,0.3)] bg-[rgba(47,95,132,0.12)] text-[var(--status-info)]',
+    default: 'border border-[var(--line-soft)] bg-[rgba(43,32,21,0.08)] text-[var(--ink-700)]',
   };
 
   const sizeStyles = {
