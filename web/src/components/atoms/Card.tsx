@@ -20,20 +20,20 @@ export function Card({
   const shadowStyles = {
     none: '',
     sm: 'shadow-sm',
-    md: 'shadow-md',
-    lg: 'shadow-lg',
+    md: 'shadow-[0_8px_22px_rgba(7,9,13,0.28)]',
+    lg: 'shadow-[0_14px_28px_rgba(7,9,13,0.35)]',
   };
 
   return (
-    <div className={`bg-white rounded-lg border border-gray-200 ${shadowStyles[shadow]} ${className}`}>
+    <div className={`ui-panel rounded-xl ${shadowStyles[shadow]} ${className}`}>
       {(title || header) && (
-        <div className="px-6 py-4 border-b border-gray-200">
-          {header || (title && <h3 className="text-lg font-semibold text-gray-900">{title}</h3>)}
+        <div className="border-b border-[var(--line-strong)] px-6 py-4">
+          {header || (title && <h3 className="text-lg font-semibold text-[var(--ink-900)]">{title}</h3>)}
         </div>
       )}
       <div className="p-6">{children}</div>
       {footer && (
-        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+        <div className="ui-panel-soft rounded-b-xl border-t border-[var(--line-soft)] px-6 py-4">
           {footer}
         </div>
       )}

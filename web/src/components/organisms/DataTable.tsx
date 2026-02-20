@@ -51,7 +51,7 @@ export function DataTable<T>({
           {[...Array(5)].map((_, i) => (
             <div key={i} className="flex gap-4">
               {[...Array(4)].map((_, j) => (
-                <div key={j} className="flex-1 h-4 bg-gray-200 rounded"></div>
+                <div key={j} className="h-4 flex-1 rounded bg-[rgba(43,32,21,0.2)]"></div>
               ))}
             </div>
           ))}
@@ -82,19 +82,19 @@ export function DataTable<T>({
             placeholder="Search..."
             value={searchValue}
             onChange={(e) => onSearch(e.target.value)}
-            className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="ui-input max-w-md"
           />
         </div>
       )}
 
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="border-b border-[var(--line-strong)] bg-[rgba(43,32,21,0.08)]">
             <tr>
               {columns.map((column) => (
                 <th
                   key={column.key}
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.12em] text-[var(--ink-500)]"
                   style={{ width: column.width }}
                 >
                   {column.header}
@@ -102,12 +102,14 @@ export function DataTable<T>({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-[var(--line-soft)]">
             {data.map((item) => (
-              <tr key={keyExtractor(item)} className="hover:bg-gray-50">
+              <tr key={keyExtractor(item)} className="hover:bg-[rgba(43,32,21,0.06)]">
                 {columns.map((column) => (
-                  <td key={`${keyExtractor(item)}-${column.key}`} className="px-6 py-4 whitespace-nowrap">
-                    {column.render ? column.render(item) : (item as any)[column.key]}
+                  <td key={`${keyExtractor(item)}-${column.key}`} className="whitespace-nowrap px-6 py-4 text-[var(--ink-900)]">
+                    {column.render
+                      ? column.render(item)
+                      : String(((item as unknown as Record<string, unknown>)[column.key] ?? ''))}
                   </td>
                 ))}
               </tr>

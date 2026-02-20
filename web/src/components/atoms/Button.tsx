@@ -15,13 +15,17 @@ export function Button({
   className = '',
   ...props
 }: ButtonProps) {
-  const baseStyles = 'inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2';
-  
+  const baseStyles = 'inline-flex items-center justify-center rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed';
+
   const variantStyles = {
-    primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 disabled:bg-blue-300',
-    secondary: 'bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-500 disabled:bg-gray-100',
-    danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 disabled:bg-red-300',
-    ghost: 'bg-transparent text-gray-700 hover:bg-gray-100 focus:ring-gray-500 disabled:text-gray-400',
+    primary:
+      'bg-gradient-to-r from-[#c79a45] via-[#9f712a] to-[#73531e] text-[#21160f] shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] hover:brightness-110 focus:ring-[#b18532] disabled:opacity-45',
+    secondary:
+      'border border-[var(--line-strong)] bg-[var(--surface-panel-muted)] text-[var(--ink-900)] hover:bg-[var(--surface-panel-soft)] focus:ring-[#b18532] disabled:opacity-45',
+    danger:
+      'bg-gradient-to-r from-[#b45c3c] to-[#7a2c20] text-[#f8e8df] hover:brightness-110 focus:ring-[#982b21] disabled:opacity-45',
+    ghost:
+      'bg-transparent text-[var(--ink-700)] hover:bg-[rgba(43,32,21,0.08)] focus:ring-[#7b6647] disabled:opacity-45',
   };
   
   const sizeStyles = {
