@@ -1,0 +1,31 @@
+[package]
+name = "a2a-wasm-filter"
+version = "0.1.0"
+edition = "2021"
+authors = ["RAD Gateway Team"]
+description = "Envoy Wasm filter for A2A protocol validation and token counting"
+license = "Apache-2.0"
+repository = "https://github.com/radgateway/rad-gateway"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+proxy-wasm = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+log = "0.4"
+anyhow = "1.0"
+thiserror = "1.0"
+chrono = { version = "0.4", default-features = false, features = ["wasmbind"] }
+sha2 = { version = "0.10", default-features = false }
+hex = { version = "0.4", default-features = false }
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[profile.release]
+opt-level = 3
+lto = true
+panic = "abort"
+strip = true
