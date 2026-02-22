@@ -1,0 +1,81 @@
+{
+  "entities": [
+    {
+      "uid": { "type": "A2A::Agent", "id": "logistics-optimizer" },
+      "attrs": {
+        "spiffeId": "spiffe://internal.corp/agent/logistics-optimizer",
+        "capabilities": ["streaming", "pushNotifications", "stateManagement", "invoke"],
+        "trustScore": 0.95,
+        "workspace": "logistics-team",
+        "allowedJurisdictions": ["US", "EU", "APAC"],
+        "jurisdiction": "US"
+      },
+      "parents": []
+    },
+    {
+      "uid": { "type": "A2A::Agent", "id": "finance-analyzer" },
+      "attrs": {
+        "spiffeId": "spiffe://internal.corp/agent/finance-analyzer",
+        "capabilities": ["streaming"],
+        "trustScore": 0.88,
+        "workspace": "finance-team",
+        "allowedJurisdictions": ["US"],
+        "jurisdiction": "US"
+      },
+      "parents": []
+    },
+    {
+      "uid": { "type": "A2A::Agent", "id": "eu-data-processor" },
+      "attrs": {
+        "spiffeId": "spiffe://internal.corp/agent/eu-data-processor",
+        "capabilities": ["streaming", "pushNotifications", "stateManagement"],
+        "trustScore": 0.92,
+        "workspace": "eu-compliance",
+        "allowedJurisdictions": ["EU"],
+        "jurisdiction": "EU"
+      },
+      "parents": []
+    },
+    {
+      "uid": { "type": "A2A::Agent", "id": "suspicious-agent" },
+      "attrs": {
+        "spiffeId": "spiffe://internal.corp/agent/suspicious-agent",
+        "capabilities": ["streaming"],
+        "trustScore": 0.25,
+        "workspace": "unknown",
+        "allowedJurisdictions": [],
+        "jurisdiction": "US"
+      },
+      "parents": []
+    },
+    {
+      "uid": { "type": "A2A::Task", "id": "task-123" },
+      "attrs": {
+        "id": "task-123",
+        "owner": { "type": "A2A::Agent", "id": "logistics-optimizer" },
+        "status": "working",
+        "jurisdiction": "US",
+        "workspace": "logistics-team"
+      },
+      "parents": [{ "type": "A2A::Agent", "id": "logistics-optimizer" }]
+    },
+    {
+      "uid": { "type": "A2A::Workspace", "id": "logistics-team" },
+      "attrs": {
+        "id": "logistics-team",
+        "name": "Logistics Team Workspace",
+        "jurisdiction": "US"
+      },
+      "parents": []
+    },
+    {
+      "uid": { "type": "A2A::Workspace", "id": "eu-compliance" },
+      "attrs": {
+        "id": "eu-compliance",
+        "name": "EU Compliance Workspace",
+        "jurisdiction": "EU"
+      },
+      "parents": []
+    }
+  ]
+}
