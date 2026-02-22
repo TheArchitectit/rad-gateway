@@ -1,0 +1,67 @@
+# RAD Gateway A2A - HTTPRoute for MCP (Model Context Protocol) Traffic
+# Routes MCP tool invocation and resource access
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: mcp-protocol-route
+  namespace: a2a-agents
+  labels:
+    app.kubernetes.io/name: mcp-protocol-route
+    app.kubernetes.io/part-of: a2a-gateway
+spec:
+  parentRefs:
+    - name: a2a-gateway
+      namespace: gateway-system
+      sectionName: grpc-mcp
+  hostnames:
+    - "mcp.internal.corp"
+  rules:
+    # Rule 1: MCP tool invocation
+    - name: mcp-tools-invoke
+      matches:
+        - method: POST
+          path:
+            type: PathPrefix
+            value: /mcp/tools/
+          headers:
+            - type: Exact
+              name: Content-Type
+              value: application/jsonrpc
+      backendRefs:
+        - name: radgateway-backend
+          port: 8090
+      timeouts:
+        request: "60s"
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            add:
+              - name: X-MCP-Protocol-Version
+                value: "2024-11-05"
+
+    # Rule 2: MCP resources access
+    - name: mcp-resources
+      matches:
+        - method: GET
+          path:
+            type: PathPrefix
+            value: /mcp/resources/
+      backendRefs:
+        - name: radgateway-backend
+          port: 8090
+      timeouts:
+        request: "30s"
+
+    # Rule 3: MCP prompts
+    - name: mcp-prompts
+      matches:
+        - method: GET
+          path:
+            type: PathPrefix
+            value: /mcp/prompts/
+      backendRefs:
+        - name: radgateway-backend
+          port: 8090
+      timeouts:
+        request: "30s"

@@ -1,0 +1,71 @@
+# RAD Gateway A2A - Envoy Proxy Configuration
+# Configures the Envoy proxy deployment for the Gateway
+
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: a2a-envoy-config
+  namespace: gateway-system
+  labels:
+    app.kubernetes.io/name: a2a-envoy
+    app.kubernetes.io/part-of: a2a-gateway
+spec:
+  # Provider type for deployment
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        replicas: 3
+        patch:
+          spec:
+            template:
+              spec:
+                containers:
+                  - name: envoy
+                    resources:
+                      requests:
+                        cpu: "500m"
+                        memory: "512Mi"
+                      limits:
+                        cpu: "2000m"
+                        memory: "2Gi"
+                # Affinity for high availability
+                affinity:
+                  podAntiAffinity:
+                    preferredDuringSchedulingIgnoredDuringExecution:
+                      - weight: 100
+                        podAffinityTerm:
+                          labelSelector:
+                            matchLabels:
+                              control-plane: envoy
+                          topologyKey: kubernetes.io/hostname
+
+  # Logging configuration
+  logging:
+    level:
+      default: warn
+      envoy:
+        - name: main
+          level: info
+        - name: http
+          level: debug
+        - name: connection
+          level: info
+
+  # Telemetry - OpenTelemetry integration
+  telemetry:
+    tracing:
+      provider:
+        type: OpenTelemetry
+        openTelemetry:
+          host: otel-collector.observability.svc.cluster.local
+          port: 4317
+          samplingRate: 100
+    metrics:
+      provider:
+        type: Prometheus
+
+  # Shutdown configuration
+  shutdown:
+    drainTimeout: 30s
+    minDrainDuration: 10s
