@@ -1,0 +1,73 @@
+# RAD Gateway A2A - Kafka Topics for Async Eventing
+
+# Topic 1: A2A Task Events
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: a2a-task-events
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: a2a-kafka
+    app.kubernetes.io/part-of: a2a-gateway
+spec:
+  partitions: 12
+  replicas: 3
+  config:
+    retention.ms: 604800000  # 7 days
+    cleanup.policy: delete
+    segment.ms: 3600000  # 1 hour
+    min.insync.replicas: 2
+
+---
+# Topic 2: A2A Webhook Callbacks
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: a2a-webhook-callbacks
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: a2a-kafka
+    app.kubernetes.io/part-of: a2a-gateway
+spec:
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 86400000  # 1 day
+    cleanup.policy: delete
+    min.insync.replicas: 2
+
+---
+# Topic 3: A2A Agent Discovery
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: a2a-agent-discovery
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: a2a-kafka
+    app.kubernetes.io/part-of: a2a-gateway
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: 3600000  # 1 hour
+    cleanup.policy: compact  # Compact for discovery cache
+    min.insync.replicas: 2
+
+---
+# Topic 4: A2A Protocol Metrics
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: a2a-protocol-metrics
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: a2a-kafka
+    app.kubernetes.io/part-of: a2a-gateway
+spec:
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 172800000  # 2 days
+    cleanup.policy: delete
+    min.insync.replicas: 2

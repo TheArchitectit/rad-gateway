@@ -1,0 +1,66 @@
+# RAD Gateway A2A - Apache Kafka Cluster (Diskless Mode)
+# Deployed using Strimzi operator for async eventing
+
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: a2a-kafka
+  namespace: kafka
+  labels:
+    app.kubernetes.io/name: a2a-kafka
+    app.kubernetes.io/part-of: a2a-gateway
+spec:
+  kafka:
+    version: 3.6.0
+    replicas: 3
+
+    # Listener configuration
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
+        auth:
+          type: tls
+
+    # Kafka configuration
+    config:
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      default.replication.factor: 3
+      min.insync.replicas: 2
+      log.retention.hours: 168  # 7 days
+      log.segment.bytes: 1073741824
+      log.retention.check.interval.ms: 300000
+      # Diskless mode - data in memory
+      log.dirs: /tmp/kafka-logs
+
+    # Ephemeral (diskless) storage
+    storage:
+      type: ephemeral
+
+  zookeeper:
+    replicas: 3
+    # Ephemeral storage for zookeeper
+    storage:
+      type: ephemeral
+
+  entityOperator:
+    topicOperator:
+      reconciliationIntervalSeconds: 90
+    userOperator:
+      reconciliationIntervalSeconds: 60
+
+  # Cruise Control for load balancing (optional)
+  cruiseControl:
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: kafka-metrics
+          key: kafka-metrics-config.yml
