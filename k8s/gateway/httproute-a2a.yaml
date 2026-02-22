@@ -1,0 +1,123 @@
+# RAD Gateway A2A - HTTPRoute for A2A Protocol Traffic
+# Routes A2A task submission and streaming requests
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: a2a-protocol-route
+  namespace: a2a-agents
+  labels:
+    app.kubernetes.io/name: a2a-protocol-route
+    app.kubernetes.io/part-of: a2a-gateway
+  annotations:
+    # Wasm filter for A2A payload validation
+    gateway.envoyproxy.io/wasm-image: "ghcr.io/radgateway/a2a-wasm-filter:latest"
+spec:
+  parentRefs:
+    - name: a2a-gateway
+      namespace: gateway-system
+      sectionName: https-a2a
+  hostnames:
+    - "a2a.internal.corp"
+    - "agents.internal.corp"
+  rules:
+    # Rule 1: A2A task submission (synchronous)
+    - name: a2a-task-submit
+      matches:
+        - method: POST
+          path:
+            type: PathPrefix
+            value: /a2a/tasks
+          headers:
+            - type: Exact
+              name: Content-Type
+              value: application/agent-task+json
+      backendRefs:
+        - name: radgateway-backend
+          port: 8090
+          weight: 100
+      timeouts:
+        request: "120s"
+        backendRequest: "110s"
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            add:
+              - name: X-A2A-Protocol-Version
+                value: "0.1.0"
+              - name: X-Forwarded-Proto
+                value: "https"
+
+    # Rule 2: A2A streaming (SSE)
+    - name: a2a-task-stream
+      matches:
+        - method: GET
+          path:
+            type: PathPrefix
+            value: /a2a/tasks/
+          headers:
+            - type: Exact
+              name: Accept
+              value: text/event-stream
+      backendRefs:
+        - name: radgateway-backend
+          port: 8090
+      timeouts:
+        request: "600s"
+        backendRequest: "590s"
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            add:
+              - name: Cache-Control
+                value: "no-cache"
+              - name: Connection
+                value: "keep-alive"
+              - name: X-A2A-Streaming
+                value: "true"
+
+    # Rule 3: Task status polling
+    - name: a2a-task-status
+      matches:
+        - method: GET
+          path:
+            type: PathPrefix
+            value: /a2a/tasks/
+      backendRefs:
+        - name: radgateway-backend
+          port: 8090
+      timeouts:
+        request: "30s"
+
+    # Rule 4: Task cancellation
+    - name: a2a-task-cancel
+      matches:
+        - method: DELETE
+          path:
+            type: PathPrefix
+            value: /a2a/tasks/
+      backendRefs:
+        - name: radgateway-backend
+          port: 8090
+      timeouts:
+        request: "30s"
+
+    # Rule 5: Agent card discovery (cached)
+    - name: agent-card-discovery
+      matches:
+        - path:
+            type: Exact
+            value: /.well-known/agent.json
+      backendRefs:
+        - name: agent-card-cache
+          port: 6379
+          kind: Backend
+          group: gateway.envoyproxy.io
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            add:
+              - name: Cache-Control
+                value: "public, max-age=300"
+              - name: X-Agent-Card-Cached
+                value: "true"
