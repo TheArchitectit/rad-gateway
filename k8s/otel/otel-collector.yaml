@@ -1,0 +1,141 @@
+# RAD Gateway A2A - OpenTelemetry Collector
+# Collects traces and metrics from A2A Gateway components
+
+apiVersion: opentelemetry.io/v1alpha1
+kind: OpenTelemetryCollector
+metadata:
+  name: a2a-otel
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: a2a-otel
+    app.kubernetes.io/part-of: a2a-gateway
+spec:
+  mode: deployment
+  replicas: 2
+
+  # Resource requests/limits
+  resources:
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+
+  # OpenTelemetry Collector configuration
+  config: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+      # Prometheus metrics scraping
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: 'a2a-gateway'
+              scrape_interval: 15s
+              static_configs:
+                - targets: ['radgateway-backend.radgateway.svc.cluster.local:8090']
+              metric_relabel_configs:
+                - action: labeldrop
+                  regex: 'pod'
+
+    processors:
+      batch:
+        timeout: 1s
+        send_batch_size: 1024
+        send_batch_max_size: 2048
+
+      # Resource detection
+      resourcedetection:
+        detectors: [env, kubernetes]
+        timeout: 2s
+        override: false
+
+      # Add custom attributes
+      resource:
+        attributes:
+          - key: service.name
+            value: a2a-gateway
+            action: upsert
+          - key: deployment.environment
+            value: production
+            action: upsert
+          - key: telemetry.distro.name
+            value: a2a-otel
+            action: upsert
+
+      # Tail sampling for high-volume traces
+      tail_sampling:
+        policies:
+          - name: error-policy
+            type: status_code
+            status_code:
+              status_codes: [ERROR]
+          - name: slow-policy
+            type: latency
+            latency:
+              threshold_ms: 1000
+          - name: probabilistic-policy
+            type: probabilistic_sampler
+            probabilistic_sampler:
+              sampling_percentage: 20
+
+    exporters:
+      # Jaeger for tracing
+      otlp/jaeger:
+        endpoint: jaeger-collector.observability.svc.cluster.local:4317
+        tls:
+          insecure: true
+
+      # Prometheus for metrics
+      prometheus:
+        endpoint: 0.0.0.0:8889
+        namespace: a2a_gateway
+
+      # Debug exporter for development
+      debug:
+        verbosity: detailed
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [resourcedetection, resource, batch, tail_sampling]
+          exporters: [otlp/jaeger]
+        metrics:
+          receivers: [otlp, prometheus]
+          processors: [resourcedetection, resource, batch]
+          exporters: [prometheus, debug]
+
+  # Health check endpoint
+  management:
+    health_check:
+      endpoint: 0.0.0.0:13133
+
+---
+# ConfigMap for custom A2A attributes
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: a2a-otel-config
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: a2a-gateway
+data:
+  # Custom attributes for A2A protocol
+  a2a-attributes.json: |
+    {
+      "agent.id": "string",
+      "task.id": "string",
+      "prompt.tokens": "int",
+      "completion.tokens": "int",
+      "model.temperature": "float",
+      "jurisdiction": "string",
+      "trust.score": "float"
+    }
