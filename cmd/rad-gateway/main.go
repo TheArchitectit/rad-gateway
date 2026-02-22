@@ -203,17 +203,17 @@ func main() {
 
 	// Register API handlers (OpenAI-compatible endpoints)
 	api.NewHandlers(gateway).Register(apiMux)
-	mcp.NewHandler().Register(apiMux)
+	mcp.NewHandlerWithGateway(gateway).Register(apiMux)
 
 	// Register A2A handlers (if repository is initialized)
 	if a2aRepo != nil {
-		a2aHandlers := a2a.NewHandlersWithTaskStore(a2aRepo, a2aTaskStore)
+		a2aHandlers := a2a.NewHandlersWithTaskStore(a2aRepo, a2aTaskStore, gateway)
 		a2aHandlers.Register(apiMux)
 		log.Info("A2A handlers registered")
 	}
 
 	// Register admin handlers
-	admin.NewHandlers(cfg, usageSink, traceStore).Register(adminMux)
+	admin.NewHandlers(cfg, usageSink, traceStore, database).Register(adminMux)
 
 	// Initialize SSE handler for real-time events
 	healthChecker := provider.NewHTTPHealthChecker(5 * time.Second)
@@ -235,7 +235,7 @@ func main() {
 	oauthHandler.Register(combinedMux)
 
 	// Public endpoints (no auth required)
-	combinedMux.Handle("/v1/auth/", http.StripPrefix("/v1/auth", publicMux))
+	combinedMux.Handle("/v1/auth/", publicMux)
 	combinedMux.Handle("/health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
@@ -274,7 +274,7 @@ func main() {
 
 	// API endpoints require API key authentication (except health)
 	apiHandler := apiKeyAuth.Require(apiMux)
-	combinedMux.Handle("/v1/", http.StripPrefix("/v1", apiHandler))
+	combinedMux.Handle("/v1/", apiHandler)
 	combinedMux.Handle("/a2a/", apiHandler)
 	combinedMux.Handle("/mcp/", apiHandler)
 

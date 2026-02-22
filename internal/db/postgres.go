@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -446,15 +447,19 @@ func (r *pgRoleRepo) Create(ctx context.Context, role *Role) error {
 	return err
 }
 func (r *pgRoleRepo) GetByID(ctx context.Context, id string) (*Role, error) { return nil, nil }
-func (r *pgRoleRepo) GetByWorkspace(ctx context.Context, workspaceID *string) ([]Role, error) { return nil, nil }
+func (r *pgRoleRepo) GetByWorkspace(ctx context.Context, workspaceID *string) ([]Role, error) {
+	return nil, nil
+}
 func (r *pgRoleRepo) Update(ctx context.Context, role *Role) error { return nil }
-func (r *pgRoleRepo) Delete(ctx context.Context, id string) error { return nil }
+func (r *pgRoleRepo) Delete(ctx context.Context, id string) error  { return nil }
 func (r *pgRoleRepo) AssignToUser(ctx context.Context, userID, roleID string, grantedBy *string, expiresAt *time.Time) error {
 	_, err := r.db.ExecContext(ctx, `INSERT INTO user_roles (user_id, role_id, granted_by, expires_at) VALUES ($1, $2, $3, $4)`, userID, roleID, grantedBy, expiresAt)
 	return err
 }
 func (r *pgRoleRepo) RemoveFromUser(ctx context.Context, userID, roleID string) error { return nil }
-func (r *pgRoleRepo) GetUserRoles(ctx context.Context, userID string) ([]Role, error) { return nil, nil }
+func (r *pgRoleRepo) GetUserRoles(ctx context.Context, userID string) ([]Role, error) {
+	return nil, nil
+}
 
 type pgPermissionRepo struct{ db *sql.DB }
 
@@ -463,16 +468,26 @@ func (r *pgPermissionRepo) Create(ctx context.Context, p *Permission) error {
 		p.ID, p.Name, p.Description, p.ResourceType, p.Action)
 	return err
 }
-func (r *pgPermissionRepo) GetByID(ctx context.Context, id string) (*Permission, error) { return nil, nil }
-func (r *pgPermissionRepo) GetByName(ctx context.Context, name string) (*Permission, error) { return nil, nil }
+func (r *pgPermissionRepo) GetByID(ctx context.Context, id string) (*Permission, error) {
+	return nil, nil
+}
+func (r *pgPermissionRepo) GetByName(ctx context.Context, name string) (*Permission, error) {
+	return nil, nil
+}
 func (r *pgPermissionRepo) List(ctx context.Context) ([]Permission, error) { return nil, nil }
 func (r *pgPermissionRepo) AssignToRole(ctx context.Context, roleID, permissionID string) error {
 	_, err := r.db.ExecContext(ctx, `INSERT INTO role_permissions (role_id, permission_id) VALUES ($1, $2)`, roleID, permissionID)
 	return err
 }
-func (r *pgPermissionRepo) RemoveFromRole(ctx context.Context, roleID, permissionID string) error { return nil }
-func (r *pgPermissionRepo) GetRolePermissions(ctx context.Context, roleID string) ([]Permission, error) { return nil, nil }
-func (r *pgPermissionRepo) GetUserPermissions(ctx context.Context, userID string) ([]Permission, error) { return nil, nil }
+func (r *pgPermissionRepo) RemoveFromRole(ctx context.Context, roleID, permissionID string) error {
+	return nil
+}
+func (r *pgPermissionRepo) GetRolePermissions(ctx context.Context, roleID string) ([]Permission, error) {
+	return nil, nil
+}
+func (r *pgPermissionRepo) GetUserPermissions(ctx context.Context, userID string) ([]Permission, error) {
+	return nil, nil
+}
 
 type pgTagRepo struct{ db *sql.DB }
 
@@ -482,21 +497,31 @@ func (r *pgTagRepo) Create(ctx context.Context, tag *Tag) error {
 	return err
 }
 func (r *pgTagRepo) GetByID(ctx context.Context, id string) (*Tag, error) { return nil, nil }
-func (r *pgTagRepo) GetByCategoryValue(ctx context.Context, workspaceID, category, value string) (*Tag, error) { return nil, nil }
-func (r *pgTagRepo) GetByWorkspace(ctx context.Context, workspaceID string) ([]Tag, error) { return nil, nil }
+func (r *pgTagRepo) GetByCategoryValue(ctx context.Context, workspaceID, category, value string) (*Tag, error) {
+	return nil, nil
+}
+func (r *pgTagRepo) GetByWorkspace(ctx context.Context, workspaceID string) ([]Tag, error) {
+	return nil, nil
+}
 func (r *pgTagRepo) Delete(ctx context.Context, id string) error { return nil }
 func (r *pgTagRepo) AssignToProvider(ctx context.Context, providerID, tagID string) error {
 	_, err := r.db.ExecContext(ctx, `INSERT INTO provider_tags (provider_id, tag_id) VALUES ($1, $2)`, providerID, tagID)
 	return err
 }
-func (r *pgTagRepo) RemoveFromProvider(ctx context.Context, providerID, tagID string) error { return nil }
-func (r *pgTagRepo) GetProviderTags(ctx context.Context, providerID string) ([]Tag, error) { return nil, nil }
+func (r *pgTagRepo) RemoveFromProvider(ctx context.Context, providerID, tagID string) error {
+	return nil
+}
+func (r *pgTagRepo) GetProviderTags(ctx context.Context, providerID string) ([]Tag, error) {
+	return nil, nil
+}
 func (r *pgTagRepo) AssignToAPIKey(ctx context.Context, apiKeyID, tagID string) error {
 	_, err := r.db.ExecContext(ctx, `INSERT INTO api_key_tags (api_key_id, tag_id) VALUES ($1, $2)`, apiKeyID, tagID)
 	return err
 }
 func (r *pgTagRepo) RemoveFromAPIKey(ctx context.Context, apiKeyID, tagID string) error { return nil }
-func (r *pgTagRepo) GetAPIKeyTags(ctx context.Context, apiKeyID string) ([]Tag, error) { return nil, nil }
+func (r *pgTagRepo) GetAPIKeyTags(ctx context.Context, apiKeyID string) ([]Tag, error) {
+	return nil, nil
+}
 
 type pgProviderRepo struct{ db *sql.DB }
 
@@ -506,12 +531,104 @@ func (r *pgProviderRepo) Create(ctx context.Context, p *Provider) error {
 	_, err := r.db.ExecContext(ctx, query, p.ID, p.WorkspaceID, p.Slug, p.Name, p.ProviderType, p.BaseURL, p.APIKeyEncrypted, p.Config, p.Status, p.Priority, p.Weight, p.CreatedAt, p.UpdatedAt)
 	return err
 }
-func (r *pgProviderRepo) GetByID(ctx context.Context, id string) (*Provider, error) { return nil, nil }
-func (r *pgProviderRepo) GetBySlug(ctx context.Context, workspaceID, slug string) (*Provider, error) { return nil, nil }
-func (r *pgProviderRepo) GetByWorkspace(ctx context.Context, workspaceID string) ([]Provider, error) { return nil, nil }
-func (r *pgProviderRepo) GetByTags(ctx context.Context, workspaceID string, tagIDs []string) ([]Provider, error) { return nil, nil }
-func (r *pgProviderRepo) Update(ctx context.Context, p *Provider) error { return nil }
-func (r *pgProviderRepo) Delete(ctx context.Context, id string) error { return nil }
+func (r *pgProviderRepo) GetByID(ctx context.Context, id string) (*Provider, error) {
+	p := &Provider{}
+	var apiKey sql.NullString
+	err := r.db.QueryRowContext(ctx, `SELECT id, workspace_id, slug, name, provider_type, base_url, api_key_encrypted, config, status, priority, weight, created_at, updated_at FROM providers WHERE id = $1`, id).
+		Scan(&p.ID, &p.WorkspaceID, &p.Slug, &p.Name, &p.ProviderType, &p.BaseURL, &apiKey, &p.Config, &p.Status, &p.Priority, &p.Weight, &p.CreatedAt, &p.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if apiKey.Valid {
+		p.APIKeyEncrypted = &apiKey.String
+	}
+	return p, nil
+}
+
+func (r *pgProviderRepo) GetBySlug(ctx context.Context, workspaceID, slug string) (*Provider, error) {
+	p := &Provider{}
+	var apiKey sql.NullString
+	err := r.db.QueryRowContext(ctx, `SELECT id, workspace_id, slug, name, provider_type, base_url, api_key_encrypted, config, status, priority, weight, created_at, updated_at FROM providers WHERE workspace_id = $1 AND slug = $2`, workspaceID, slug).
+		Scan(&p.ID, &p.WorkspaceID, &p.Slug, &p.Name, &p.ProviderType, &p.BaseURL, &apiKey, &p.Config, &p.Status, &p.Priority, &p.Weight, &p.CreatedAt, &p.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if apiKey.Valid {
+		p.APIKeyEncrypted = &apiKey.String
+	}
+	return p, nil
+}
+
+func (r *pgProviderRepo) GetByWorkspace(ctx context.Context, workspaceID string) ([]Provider, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, workspace_id, slug, name, provider_type, base_url, api_key_encrypted, config, status, priority, weight, created_at, updated_at FROM providers WHERE workspace_id = $1 ORDER BY created_at DESC`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	providers := make([]Provider, 0)
+	for rows.Next() {
+		var p Provider
+		var apiKey sql.NullString
+		if err := rows.Scan(&p.ID, &p.WorkspaceID, &p.Slug, &p.Name, &p.ProviderType, &p.BaseURL, &apiKey, &p.Config, &p.Status, &p.Priority, &p.Weight, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if apiKey.Valid {
+			p.APIKeyEncrypted = &apiKey.String
+		}
+		providers = append(providers, p)
+	}
+	return providers, rows.Err()
+}
+
+func (r *pgProviderRepo) GetByTags(ctx context.Context, workspaceID string, tagIDs []string) ([]Provider, error) {
+	if len(tagIDs) == 0 {
+		return r.GetByWorkspace(ctx, workspaceID)
+	}
+	placeholders := make([]string, len(tagIDs))
+	args := make([]interface{}, 0, len(tagIDs)+1)
+	args = append(args, workspaceID)
+	for i, id := range tagIDs {
+		placeholders[i] = fmt.Sprintf("$%d", i+2)
+		args = append(args, id)
+	}
+	query := fmt.Sprintf(`SELECT DISTINCT p.id, p.workspace_id, p.slug, p.name, p.provider_type, p.base_url, p.api_key_encrypted, p.config, p.status, p.priority, p.weight, p.created_at, p.updated_at FROM providers p JOIN provider_tags pt ON p.id = pt.provider_id WHERE p.workspace_id = $1 AND pt.tag_id IN (%s) ORDER BY p.created_at DESC`, strings.Join(placeholders, ","))
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	providers := make([]Provider, 0)
+	for rows.Next() {
+		var p Provider
+		var apiKey sql.NullString
+		if err := rows.Scan(&p.ID, &p.WorkspaceID, &p.Slug, &p.Name, &p.ProviderType, &p.BaseURL, &apiKey, &p.Config, &p.Status, &p.Priority, &p.Weight, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if apiKey.Valid {
+			p.APIKeyEncrypted = &apiKey.String
+		}
+		providers = append(providers, p)
+	}
+	return providers, rows.Err()
+}
+
+func (r *pgProviderRepo) Update(ctx context.Context, p *Provider) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE providers SET slug = $1, name = $2, provider_type = $3, base_url = $4, api_key_encrypted = $5, config = $6, status = $7, priority = $8, weight = $9, updated_at = $10 WHERE id = $11`, p.Slug, p.Name, p.ProviderType, p.BaseURL, p.APIKeyEncrypted, p.Config, p.Status, p.Priority, p.Weight, p.UpdatedAt, p.ID)
+	return err
+}
+
+func (r *pgProviderRepo) Delete(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM providers WHERE id = $1`, id)
+	return err
+}
 func (r *pgProviderRepo) UpdateHealth(ctx context.Context, health *ProviderHealth) error {
 	query := `INSERT INTO provider_health (provider_id, healthy, last_check_at, last_success_at, consecutive_failures, latency_ms, error_message, updated_at)
 			  VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -526,7 +643,33 @@ func (r *pgProviderRepo) UpdateHealth(ctx context.Context, health *ProviderHealt
 	_, err := r.db.ExecContext(ctx, query, health.ProviderID, health.Healthy, health.LastCheckAt, health.LastSuccessAt, health.ConsecutiveFailures, health.LatencyMs, health.ErrorMessage, health.UpdatedAt)
 	return err
 }
-func (r *pgProviderRepo) GetHealth(ctx context.Context, providerID string) (*ProviderHealth, error) { return nil, nil }
+func (r *pgProviderRepo) GetHealth(ctx context.Context, providerID string) (*ProviderHealth, error) {
+	h := &ProviderHealth{}
+	var lastSuccess sql.NullTime
+	var latency sql.NullInt64
+	var errMsg sql.NullString
+	err := r.db.QueryRowContext(ctx, `SELECT provider_id, healthy, last_check_at, last_success_at, consecutive_failures, latency_ms, error_message, updated_at FROM provider_health WHERE provider_id = $1`, providerID).
+		Scan(&h.ProviderID, &h.Healthy, &h.LastCheckAt, &lastSuccess, &h.ConsecutiveFailures, &latency, &errMsg, &h.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if lastSuccess.Valid {
+		t := lastSuccess.Time
+		h.LastSuccessAt = &t
+	}
+	if latency.Valid {
+		v := int(latency.Int64)
+		h.LatencyMs = &v
+	}
+	if errMsg.Valid {
+		s := errMsg.String
+		h.ErrorMessage = &s
+	}
+	return h, nil
+}
 func (r *pgProviderRepo) UpdateCircuitBreaker(ctx context.Context, state *CircuitBreakerState) error {
 	query := `INSERT INTO circuit_breaker_states (provider_id, state, failures, successes, last_failure_at, half_open_requests, opened_at, updated_at)
 			  VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -541,7 +684,28 @@ func (r *pgProviderRepo) UpdateCircuitBreaker(ctx context.Context, state *Circui
 	_, err := r.db.ExecContext(ctx, query, state.ProviderID, state.State, state.Failures, state.Successes, state.LastFailureAt, state.HalfOpenRequests, state.OpenedAt, state.UpdatedAt)
 	return err
 }
-func (r *pgProviderRepo) GetCircuitBreaker(ctx context.Context, providerID string) (*CircuitBreakerState, error) { return nil, nil }
+func (r *pgProviderRepo) GetCircuitBreaker(ctx context.Context, providerID string) (*CircuitBreakerState, error) {
+	cb := &CircuitBreakerState{}
+	var lastFailure sql.NullTime
+	var openedAt sql.NullTime
+	err := r.db.QueryRowContext(ctx, `SELECT provider_id, state, failures, successes, last_failure_at, half_open_requests, opened_at, updated_at FROM circuit_breaker_states WHERE provider_id = $1`, providerID).
+		Scan(&cb.ProviderID, &cb.State, &cb.Failures, &cb.Successes, &lastFailure, &cb.HalfOpenRequests, &openedAt, &cb.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if lastFailure.Valid {
+		t := lastFailure.Time
+		cb.LastFailureAt = &t
+	}
+	if openedAt.Valid {
+		t := openedAt.Time
+		cb.OpenedAt = &t
+	}
+	return cb, nil
+}
 
 type pgControlRoomRepo struct{ db *sql.DB }
 
@@ -551,34 +715,107 @@ func (r *pgControlRoomRepo) Create(ctx context.Context, room *ControlRoom) error
 	_, err := r.db.ExecContext(ctx, query, room.ID, room.WorkspaceID, room.Slug, room.Name, room.Description, room.TagFilter, room.DashboardLayout, room.CreatedBy, room.CreatedAt, room.UpdatedAt)
 	return err
 }
-func (r *pgControlRoomRepo) GetByID(ctx context.Context, id string) (*ControlRoom, error) { return nil, nil }
-func (r *pgControlRoomRepo) GetBySlug(ctx context.Context, workspaceID, slug string) (*ControlRoom, error) { return nil, nil }
-func (r *pgControlRoomRepo) GetByWorkspace(ctx context.Context, workspaceID string) ([]ControlRoom, error) { return nil, nil }
+func (r *pgControlRoomRepo) GetByID(ctx context.Context, id string) (*ControlRoom, error) {
+	return nil, nil
+}
+func (r *pgControlRoomRepo) GetBySlug(ctx context.Context, workspaceID, slug string) (*ControlRoom, error) {
+	return nil, nil
+}
+func (r *pgControlRoomRepo) GetByWorkspace(ctx context.Context, workspaceID string) ([]ControlRoom, error) {
+	return nil, nil
+}
 func (r *pgControlRoomRepo) Update(ctx context.Context, room *ControlRoom) error { return nil }
-func (r *pgControlRoomRepo) Delete(ctx context.Context, id string) error { return nil }
+func (r *pgControlRoomRepo) Delete(ctx context.Context, id string) error         { return nil }
 func (r *pgControlRoomRepo) GrantAccess(ctx context.Context, access *ControlRoomAccess) error {
 	query := `INSERT INTO control_room_access (control_room_id, user_id, role, granted_by, granted_at, expires_at)
 			  VALUES ($1, $2, $3, $4, $5, $6)`
 	_, err := r.db.ExecContext(ctx, query, access.ControlRoomID, access.UserID, access.Role, access.GrantedBy, access.GrantedAt, access.ExpiresAt)
 	return err
 }
-func (r *pgControlRoomRepo) RevokeAccess(ctx context.Context, controlRoomID, userID string) error { return nil }
-func (r *pgControlRoomRepo) GetUserAccess(ctx context.Context, controlRoomID string) ([]ControlRoomAccess, error) { return nil, nil }
+func (r *pgControlRoomRepo) RevokeAccess(ctx context.Context, controlRoomID, userID string) error {
+	return nil
+}
+func (r *pgControlRoomRepo) GetUserAccess(ctx context.Context, controlRoomID string) ([]ControlRoomAccess, error) {
+	return nil, nil
+}
 
 type pgAPIKeyRepo struct{ db *sql.DB }
 
 func (r *pgAPIKeyRepo) Create(ctx context.Context, key *APIKey) error {
+	allowedModelsJSON, err := json.Marshal(key.AllowedModels)
+	if err != nil {
+		return err
+	}
+	allowedAPIsJSON, err := json.Marshal(key.AllowedAPIs)
+	if err != nil {
+		return err
+	}
 	query := `INSERT INTO api_keys (id, workspace_id, name, key_hash, key_preview, status, created_by, expires_at, last_used_at, rate_limit, allowed_models, allowed_apis, metadata, created_at, updated_at)
 			  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`
-	_, err := r.db.ExecContext(ctx, query, key.ID, key.WorkspaceID, key.Name, key.KeyHash, key.KeyPreview, key.Status, key.CreatedBy, key.ExpiresAt, key.LastUsedAt, key.RateLimit, key.AllowedModels, key.AllowedAPIs, key.Metadata, key.CreatedAt, key.UpdatedAt)
+	_, err = r.db.ExecContext(ctx, query, key.ID, key.WorkspaceID, key.Name, key.KeyHash, key.KeyPreview, key.Status, key.CreatedBy, key.ExpiresAt, key.LastUsedAt, key.RateLimit, string(allowedModelsJSON), string(allowedAPIsJSON), key.Metadata, key.CreatedAt, key.UpdatedAt)
 	return err
 }
-func (r *pgAPIKeyRepo) GetByID(ctx context.Context, id string) (*APIKey, error) { return nil, nil }
-func (r *pgAPIKeyRepo) GetByHash(ctx context.Context, hash string) (*APIKey, error) { return nil, nil }
-func (r *pgAPIKeyRepo) GetByWorkspace(ctx context.Context, workspaceID string, limit, offset int) ([]APIKey, error) { return nil, nil }
-func (r *pgAPIKeyRepo) Update(ctx context.Context, key *APIKey) error { return nil }
-func (r *pgAPIKeyRepo) Delete(ctx context.Context, id string) error { return nil }
-func (r *pgAPIKeyRepo) UpdateLastUsed(ctx context.Context, id string, t time.Time) error { return nil }
+func (r *pgAPIKeyRepo) GetByID(ctx context.Context, id string) (*APIKey, error) {
+	return r.getOne(ctx, `SELECT id, workspace_id, name, key_hash, key_preview, status, created_by, expires_at, last_used_at, rate_limit, allowed_models, allowed_apis, metadata, created_at, updated_at FROM api_keys WHERE id = $1`, id)
+}
+
+func (r *pgAPIKeyRepo) GetByHash(ctx context.Context, hash string) (*APIKey, error) {
+	return r.getOne(ctx, `SELECT id, workspace_id, name, key_hash, key_preview, status, created_by, expires_at, last_used_at, rate_limit, allowed_models, allowed_apis, metadata, created_at, updated_at FROM api_keys WHERE key_hash = $1`, hash)
+}
+
+func (r *pgAPIKeyRepo) GetByWorkspace(ctx context.Context, workspaceID string, limit, offset int) ([]APIKey, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT id, workspace_id, name, key_hash, key_preview, status, created_by, expires_at, last_used_at, rate_limit, allowed_models, allowed_apis, metadata, created_at, updated_at FROM api_keys WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, workspaceID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]APIKey, 0)
+	for rows.Next() {
+		key, err := scanAPIKey(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *key)
+	}
+	return items, rows.Err()
+}
+
+func (r *pgAPIKeyRepo) Update(ctx context.Context, key *APIKey) error {
+	allowedModelsJSON, err := json.Marshal(key.AllowedModels)
+	if err != nil {
+		return err
+	}
+	allowedAPIsJSON, err := json.Marshal(key.AllowedAPIs)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, `UPDATE api_keys SET name = $1, key_hash = $2, key_preview = $3, status = $4, created_by = $5, expires_at = $6, last_used_at = $7, rate_limit = $8, allowed_models = $9, allowed_apis = $10, metadata = $11, updated_at = $12 WHERE id = $13`, key.Name, key.KeyHash, key.KeyPreview, key.Status, key.CreatedBy, key.ExpiresAt, key.LastUsedAt, key.RateLimit, string(allowedModelsJSON), string(allowedAPIsJSON), key.Metadata, key.UpdatedAt, key.ID)
+	return err
+}
+
+func (r *pgAPIKeyRepo) Delete(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM api_keys WHERE id = $1`, id)
+	return err
+}
+
+func (r *pgAPIKeyRepo) UpdateLastUsed(ctx context.Context, id string, t time.Time) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at = $1, updated_at = $2 WHERE id = $3`, t, t, id)
+	return err
+}
+
+func (r *pgAPIKeyRepo) getOne(ctx context.Context, query string, arg interface{}) (*APIKey, error) {
+	key, err := scanAPIKey(r.db.QueryRowContext(ctx, query, arg))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return key, nil
+}
 
 type pgQuotaRepo struct{ db *sql.DB }
 
@@ -589,19 +826,29 @@ func (r *pgQuotaRepo) Create(ctx context.Context, quota *Quota) error {
 	return err
 }
 func (r *pgQuotaRepo) GetByID(ctx context.Context, id string) (*Quota, error) { return nil, nil }
-func (r *pgQuotaRepo) GetByWorkspace(ctx context.Context, workspaceID string) ([]Quota, error) { return nil, nil }
+func (r *pgQuotaRepo) GetByWorkspace(ctx context.Context, workspaceID string) ([]Quota, error) {
+	return nil, nil
+}
 func (r *pgQuotaRepo) Update(ctx context.Context, quota *Quota) error { return nil }
-func (r *pgQuotaRepo) Delete(ctx context.Context, id string) error { return nil }
+func (r *pgQuotaRepo) Delete(ctx context.Context, id string) error    { return nil }
 func (r *pgQuotaRepo) AssignQuota(ctx context.Context, assignment *QuotaAssignment) error {
 	query := `INSERT INTO quota_assignments (quota_id, resource_type, resource_id, current_usage, period_start, period_end, warning_sent, exceeded_at, updated_at)
 			  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 	_, err := r.db.ExecContext(ctx, query, assignment.QuotaID, assignment.ResourceType, assignment.ResourceID, assignment.CurrentUsage, assignment.PeriodStart, assignment.PeriodEnd, assignment.WarningSent, assignment.ExceededAt, assignment.UpdatedAt)
 	return err
 }
-func (r *pgQuotaRepo) GetAssignment(ctx context.Context, quotaID, resourceType, resourceID string) (*QuotaAssignment, error) { return nil, nil }
-func (r *pgQuotaRepo) UpdateUsage(ctx context.Context, quotaID, resourceType, resourceID string, usage int64) error { return nil }
-func (r *pgQuotaRepo) ResetUsage(ctx context.Context, quotaID, resourceType, resourceID string) error { return nil }
-func (r *pgQuotaRepo) GetResourceAssignments(ctx context.Context, resourceType, resourceID string) ([]QuotaAssignment, error) { return nil, nil }
+func (r *pgQuotaRepo) GetAssignment(ctx context.Context, quotaID, resourceType, resourceID string) (*QuotaAssignment, error) {
+	return nil, nil
+}
+func (r *pgQuotaRepo) UpdateUsage(ctx context.Context, quotaID, resourceType, resourceID string, usage int64) error {
+	return nil
+}
+func (r *pgQuotaRepo) ResetUsage(ctx context.Context, quotaID, resourceType, resourceID string) error {
+	return nil
+}
+func (r *pgQuotaRepo) GetResourceAssignments(ctx context.Context, resourceType, resourceID string) ([]QuotaAssignment, error) {
+	return nil, nil
+}
 
 type pgUsageRecordRepo struct{ db *sql.DB }
 
@@ -611,12 +858,83 @@ func (r *pgUsageRecordRepo) Create(ctx context.Context, record *UsageRecord) err
 	_, err := r.db.ExecContext(ctx, query, record.ID, record.WorkspaceID, record.RequestID, record.TraceID, record.APIKeyID, record.ControlRoomID, record.IncomingAPI, record.IncomingModel, record.SelectedModel, record.ProviderID, record.PromptTokens, record.CompletionTokens, record.TotalTokens, record.CostUSD, record.DurationMs, record.ResponseStatus, record.ErrorCode, record.ErrorMessage, record.Attempts, record.RouteLog, record.StartedAt, record.CompletedAt, record.CreatedAt)
 	return err
 }
-func (r *pgUsageRecordRepo) GetByID(ctx context.Context, id string) (*UsageRecord, error) { return nil, nil }
-func (r *pgUsageRecordRepo) GetByRequestID(ctx context.Context, requestID string) (*UsageRecord, error) { return nil, nil }
-func (r *pgUsageRecordRepo) GetByWorkspace(ctx context.Context, workspaceID string, start, end time.Time, limit, offset int) ([]UsageRecord, error) { return nil, nil }
-func (r *pgUsageRecordRepo) GetByAPIKey(ctx context.Context, apiKeyID string, start, end time.Time, limit, offset int) ([]UsageRecord, error) { return nil, nil }
-func (r *pgUsageRecordRepo) Update(ctx context.Context, record *UsageRecord) error { return nil }
-func (r *pgUsageRecordRepo) GetSummaryByWorkspace(ctx context.Context, workspaceID string, start, end time.Time) (*UsageSummary, error) { return nil, nil }
+func (r *pgUsageRecordRepo) GetByID(ctx context.Context, id string) (*UsageRecord, error) {
+	return r.getOne(ctx, `SELECT id, workspace_id, request_id, trace_id, api_key_id, control_room_id, incoming_api, incoming_model, selected_model, provider_id, prompt_tokens, completion_tokens, total_tokens, cost_usd, duration_ms, response_status, error_code, error_message, attempts, route_log, started_at, completed_at, created_at FROM usage_records WHERE id = $1`, id)
+}
+
+func (r *pgUsageRecordRepo) GetByRequestID(ctx context.Context, requestID string) (*UsageRecord, error) {
+	return r.getOne(ctx, `SELECT id, workspace_id, request_id, trace_id, api_key_id, control_room_id, incoming_api, incoming_model, selected_model, provider_id, prompt_tokens, completion_tokens, total_tokens, cost_usd, duration_ms, response_status, error_code, error_message, attempts, route_log, started_at, completed_at, created_at FROM usage_records WHERE request_id = $1`, requestID)
+}
+
+func (r *pgUsageRecordRepo) GetByWorkspace(ctx context.Context, workspaceID string, start, end time.Time, limit, offset int) ([]UsageRecord, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT id, workspace_id, request_id, trace_id, api_key_id, control_room_id, incoming_api, incoming_model, selected_model, provider_id, prompt_tokens, completion_tokens, total_tokens, cost_usd, duration_ms, response_status, error_code, error_message, attempts, route_log, started_at, completed_at, created_at FROM usage_records WHERE workspace_id = $1 AND created_at >= $2 AND created_at <= $3 ORDER BY created_at DESC LIMIT $4 OFFSET $5`, workspaceID, start, end, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]UsageRecord, 0)
+	for rows.Next() {
+		rec, err := scanUsageRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *rec)
+	}
+	return items, rows.Err()
+}
+
+func (r *pgUsageRecordRepo) GetByAPIKey(ctx context.Context, apiKeyID string, start, end time.Time, limit, offset int) ([]UsageRecord, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT id, workspace_id, request_id, trace_id, api_key_id, control_room_id, incoming_api, incoming_model, selected_model, provider_id, prompt_tokens, completion_tokens, total_tokens, cost_usd, duration_ms, response_status, error_code, error_message, attempts, route_log, started_at, completed_at, created_at FROM usage_records WHERE api_key_id = $1 AND created_at >= $2 AND created_at <= $3 ORDER BY created_at DESC LIMIT $4 OFFSET $5`, apiKeyID, start, end, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]UsageRecord, 0)
+	for rows.Next() {
+		rec, err := scanUsageRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *rec)
+	}
+	return items, rows.Err()
+}
+
+func (r *pgUsageRecordRepo) Update(ctx context.Context, record *UsageRecord) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE usage_records SET selected_model = $1, provider_id = $2, prompt_tokens = $3, completion_tokens = $4, total_tokens = $5, cost_usd = $6, duration_ms = $7, response_status = $8, error_code = $9, error_message = $10, attempts = $11, route_log = $12, completed_at = $13 WHERE id = $14`, record.SelectedModel, record.ProviderID, record.PromptTokens, record.CompletionTokens, record.TotalTokens, record.CostUSD, record.DurationMs, record.ResponseStatus, record.ErrorCode, record.ErrorMessage, record.Attempts, record.RouteLog, record.CompletedAt, record.ID)
+	return err
+}
+
+func (r *pgUsageRecordRepo) GetSummaryByWorkspace(ctx context.Context, workspaceID string, start, end time.Time) (*UsageSummary, error) {
+	summary := &UsageSummary{}
+	var avgDuration sql.NullFloat64
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(total_tokens), 0), COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0), COALESCE(SUM(cost_usd), 0), AVG(duration_ms), COALESCE(SUM(CASE WHEN response_status = 'success' THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN response_status != 'success' THEN 1 ELSE 0 END), 0) FROM usage_records WHERE workspace_id = $1 AND created_at >= $2 AND created_at <= $3`, workspaceID, start, end).
+		Scan(&summary.TotalRequests, &summary.TotalTokens, &summary.TotalPromptTokens, &summary.TotalCompletionTokens, &summary.TotalCostUSD, &avgDuration, &summary.SuccessCount, &summary.ErrorCount)
+	if err != nil {
+		return nil, err
+	}
+	if avgDuration.Valid {
+		summary.AvgDurationMs = int(avgDuration.Float64)
+	}
+	return summary, nil
+}
+
+func (r *pgUsageRecordRepo) getOne(ctx context.Context, query string, arg interface{}) (*UsageRecord, error) {
+	rec, err := scanUsageRecord(r.db.QueryRowContext(ctx, query, arg))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return rec, nil
+}
 
 type pgTraceEventRepo struct{ db *sql.DB }
 
@@ -626,8 +944,12 @@ func (r *pgTraceEventRepo) Create(ctx context.Context, event *TraceEvent) error 
 	_, err := r.db.ExecContext(ctx, query, event.ID, event.TraceID, event.RequestID, event.EventType, event.EventOrder, event.ProviderID, event.APIKeyID, event.Message, event.Metadata, event.Timestamp, event.DurationMs, event.CreatedAt)
 	return err
 }
-func (r *pgTraceEventRepo) GetByTraceID(ctx context.Context, traceID string) ([]TraceEvent, error) { return nil, nil }
-func (r *pgTraceEventRepo) GetByRequestID(ctx context.Context, requestID string) ([]TraceEvent, error) { return nil, nil }
+func (r *pgTraceEventRepo) GetByTraceID(ctx context.Context, traceID string) ([]TraceEvent, error) {
+	return nil, nil
+}
+func (r *pgTraceEventRepo) GetByRequestID(ctx context.Context, requestID string) ([]TraceEvent, error) {
+	return nil, nil
+}
 func (r *pgTraceEventRepo) CreateBatch(ctx context.Context, events []TraceEvent) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {

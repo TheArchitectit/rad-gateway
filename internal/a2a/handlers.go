@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"radgateway/internal/core"
 	"radgateway/internal/logger"
 )
 
@@ -14,6 +15,7 @@ import (
 type Handlers struct {
 	repo      Repository
 	taskStore TaskStore
+	task      *TaskHandlers
 	log       *slog.Logger
 }
 
@@ -22,14 +24,24 @@ func NewHandlers(repo Repository) *Handlers {
 	return &Handlers{
 		repo:      repo,
 		taskStore: nil,
+		task:      nil,
 		log:       logger.WithComponent("a2a_handlers"),
 	}
 }
 
-func NewHandlersWithTaskStore(repo Repository, taskStore TaskStore) *Handlers {
+func NewHandlersWithTaskStore(repo Repository, taskStore TaskStore, gateway *core.Gateway) *Handlers {
+	var taskHandlers *TaskHandlers
+	if taskStore != nil {
+		if gateway != nil {
+			taskHandlers = NewTaskHandlersWithGateway(taskStore, gateway)
+		} else {
+			taskHandlers = NewTaskHandlers(taskStore, nil)
+		}
+	}
 	return &Handlers{
 		repo:      repo,
 		taskStore: taskStore,
+		task:      taskHandlers,
 		log:       logger.WithComponent("a2a_handlers"),
 	}
 }
@@ -42,12 +54,14 @@ func (h *Handlers) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/a2a/model-cards", h.handleModelCards)
 	mux.HandleFunc("/a2a/model-cards/", h.handleModelCardByID)
 	mux.HandleFunc("/a2a/projects/", h.handleProjectModelCards)
-	mux.HandleFunc("/v1/a2a/tasks/send", h.handleSendTask)
-	mux.HandleFunc("/v1/a2a/tasks/sendSubscribe", h.handleSendTaskSubscribe)
-	mux.HandleFunc("/v1/a2a/tasks/", h.handleTaskByID)
-	mux.HandleFunc("/a2a/tasks/send", h.handleSendTask)
-	mux.HandleFunc("/a2a/tasks/sendSubscribe", h.handleSendTaskSubscribe)
-	mux.HandleFunc("/a2a/tasks/", h.handleTaskByID)
+	if h.task != nil {
+		mux.HandleFunc("/v1/a2a/tasks/send", h.task.handleSendTask)
+		mux.HandleFunc("/v1/a2a/tasks/sendSubscribe", h.task.handleSendTaskSubscribe)
+		mux.HandleFunc("/v1/a2a/tasks/", h.task.handleTaskByID)
+		mux.HandleFunc("/a2a/tasks/send", h.task.handleSendTask)
+		mux.HandleFunc("/a2a/tasks/sendSubscribe", h.task.handleSendTaskSubscribe)
+		mux.HandleFunc("/a2a/tasks/", h.task.handleTaskByID)
+	}
 }
 
 // handleModelCards handles listing and creating model cards.

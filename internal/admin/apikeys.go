@@ -1,7 +1,9 @@
 package admin
 
 import (
+	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -10,46 +12,42 @@ import (
 
 	"log/slog"
 
+	"radgateway/internal/db"
 	"radgateway/internal/logger"
 )
 
-// APIKeyCreateRequest represents a request to create an API key
 type APIKeyCreateRequest struct {
-	Name          string   `json:"name"`
-	WorkspaceID   string   `json:"workspaceId"`
-	ExpiresAt     *string  `json:"expiresAt,omitempty"`
-	RateLimit     *int     `json:"rateLimit,omitempty"`
-	AllowedModels []string `json:"allowedModels,omitempty"`
-	AllowedAPIs   []string `json:"allowedAPIs,omitempty"`
-	Metadata      []byte   `json:"metadata,omitempty"`
+	Name          string          `json:"name"`
+	WorkspaceID   string          `json:"workspaceId"`
+	ExpiresAt     *string         `json:"expiresAt,omitempty"`
+	RateLimit     *int            `json:"rateLimit,omitempty"`
+	AllowedModels []string        `json:"allowedModels,omitempty"`
+	AllowedAPIs   []string        `json:"allowedAPIs,omitempty"`
+	Metadata      json.RawMessage `json:"metadata,omitempty"`
 }
 
-// APIKeyUpdateRequest represents a request to update an API key
 type APIKeyUpdateRequest struct {
-	Name          string   `json:"name,omitempty"`
-	Status        string   `json:"status,omitempty"`
-	ExpiresAt     *string  `json:"expiresAt,omitempty"`
-	RateLimit     *int     `json:"rateLimit,omitempty"`
-	AllowedModels []string `json:"allowedModels,omitempty"`
-	AllowedAPIs   []string `json:"allowedAPIs,omitempty"`
-	Metadata      []byte   `json:"metadata,omitempty"`
+	Name          string          `json:"name,omitempty"`
+	Status        string          `json:"status,omitempty"`
+	ExpiresAt     *string         `json:"expiresAt,omitempty"`
+	RateLimit     *int            `json:"rateLimit,omitempty"`
+	AllowedModels []string        `json:"allowedModels,omitempty"`
+	AllowedAPIs   []string        `json:"allowedAPIs,omitempty"`
+	Metadata      json.RawMessage `json:"metadata,omitempty"`
 }
 
-// APIKeyRotateRequest represents a request to rotate an API key
 type APIKeyRotateRequest struct {
 	ExpiresAt *string `json:"expiresAt,omitempty"`
 }
 
-// APIKeyListResponse represents the list response
 type APIKeyListResponse struct {
-	Data       []APIKeyResponse `json:"data"`
-	Total      int              `json:"total"`
-	Page       int              `json:"page"`
-	PageSize   int              `json:"pageSize"`
-	HasMore    bool             `json:"hasMore"`
+	Data     []APIKeyResponse `json:"data"`
+	Total    int              `json:"total"`
+	Page     int              `json:"page"`
+	PageSize int              `json:"pageSize"`
+	HasMore  bool             `json:"hasMore"`
 }
 
-// APIKeyResponse represents an API key in responses (with sensitive data masked)
 type APIKeyResponse struct {
 	ID            string     `json:"id"`
 	WorkspaceID   string     `json:"workspaceId"`
@@ -59,7 +57,6 @@ type APIKeyResponse struct {
 	CreatedBy     *string    `json:"createdBy,omitempty"`
 	ExpiresAt     *time.Time `json:"expiresAt,omitempty"`
 	LastUsedAt    *time.Time `json:"lastUsedAt,omitempty"`
-	RevokedAt     *time.Time `json:"revokedAt,omitempty"`
 	RateLimit     *int       `json:"rateLimit,omitempty"`
 	AllowedModels []string   `json:"allowedModels,omitempty"`
 	AllowedAPIs   []string   `json:"allowedAPIs,omitempty"`
@@ -68,40 +65,31 @@ type APIKeyResponse struct {
 	UpdatedAt     time.Time  `json:"updatedAt"`
 }
 
-// APIKeyWithSecretResponse represents response when creating a new key (includes the secret)
 type APIKeyWithSecretResponse struct {
 	APIKeyResponse
 	KeySecret string `json:"keySecret"`
 }
 
-// BulkAPIKeyRequest represents a bulk operation request
 type BulkAPIKeyRequest struct {
 	IDs    []string `json:"ids"`
 	Action string   `json:"action"`
 }
 
-// APIKeyFilter represents filter options
 type APIKeyFilter struct {
 	Status      string
 	WorkspaceID string
 	Search      string
-	SortBy      string
-	SortOrder   string
 }
 
-// APIKeyHandler handles API key management endpoints
 type APIKeyHandler struct {
 	log *slog.Logger
+	db  db.Database
 }
 
-// NewAPIKeyHandler creates a new API key handler
-func NewAPIKeyHandler() *APIKeyHandler {
-	return &APIKeyHandler{
-		log: logger.WithComponent("admin.apikeys"),
-	}
+func NewAPIKeyHandler(database db.Database) *APIKeyHandler {
+	return &APIKeyHandler{log: logger.WithComponent("admin.apikeys"), db: database}
 }
 
-// RegisterRoutes registers the API key management routes
 func (h *APIKeyHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/v0/admin/apikeys", h.handleAPIKeys)
 	mux.HandleFunc("/v0/admin/apikeys/", h.handleAPIKeyDetail)
@@ -109,25 +97,30 @@ func (h *APIKeyHandler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 func (h *APIKeyHandler) handleAPIKeys(w http.ResponseWriter, r *http.Request) {
+	if h.db == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "database not configured"})
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		h.listAPIKeys(w, r)
 	case http.MethodPost:
 		h.createAPIKey(w, r)
 	default:
-		h.log.Warn("method not allowed", "path", r.URL.Path, "method", r.Method)
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
 }
 
 func (h *APIKeyHandler) handleAPIKeyDetail(w http.ResponseWriter, r *http.Request) {
+	if h.db == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "database not configured"})
+		return
+	}
 	id := strings.TrimPrefix(r.URL.Path, "/v0/admin/apikeys/")
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "api key id required"})
 		return
 	}
-
-	// Check for sub-routes
 	if strings.HasSuffix(id, "/revoke") {
 		h.revokeAPIKey(w, r, strings.TrimSuffix(id, "/revoke"))
 		return
@@ -142,410 +135,321 @@ func (h *APIKeyHandler) handleAPIKeyDetail(w http.ResponseWriter, r *http.Reques
 		h.getAPIKey(w, r, id)
 	case http.MethodPut:
 		h.updateAPIKey(w, r, id)
-	case http.MethodDelete:
-		h.deleteAPIKey(w, r, id)
 	case http.MethodPatch:
 		h.patchAPIKey(w, r, id)
+	case http.MethodDelete:
+		h.deleteAPIKey(w, r, id)
 	default:
-		h.log.Warn("method not allowed", "path", r.URL.Path, "method", r.Method)
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
 }
 
-// listAPIKeys returns a paginated list of API keys with filtering
 func (h *APIKeyHandler) listAPIKeys(w http.ResponseWriter, r *http.Request) {
-	filter := h.parseFilter(r)
+	filter := APIKeyFilter{
+		Status:      r.URL.Query().Get("status"),
+		WorkspaceID: r.URL.Query().Get("workspaceId"),
+		Search:      strings.TrimSpace(strings.ToLower(r.URL.Query().Get("search"))),
+	}
 	page := readIntParam(r, "page", 1)
 	pageSize := readIntParam(r, "pageSize", 50)
 	if pageSize > 500 {
 		pageSize = 500
 	}
+	offset := (page - 1) * pageSize
 
-	h.log.Debug("listing api keys",
-		"page", page,
-		"pageSize", pageSize,
-		"status", filter.Status,
-		"workspace", filter.WorkspaceID,
-	)
-
-	// Mock data
-	apiKeys := []APIKeyResponse{
-		{
-			ID:          "key_001",
-			WorkspaceID: "ws_001",
-			Name:        "Production API Key",
-			KeyPreview:  "rad...xyz",
-			Status:      "active",
-			CreatedBy:   strPtr("user_001"),
-			LastUsedAt:  timePtr(time.Now().Add(-1 * time.Hour)),
-			RateLimit:   intPtr(1000),
-			AllowedModels: []string{"gpt-4o-mini", "claude-3-5-sonnet"},
-			AllowedAPIs:   []string{"chat", "embeddings"},
-			CreatedAt:     time.Now().Add(-30 * 24 * time.Hour),
-			UpdatedAt:     time.Now(),
-		},
-		{
-			ID:          "key_002",
-			WorkspaceID: "ws_002",
-			Name:        "Staging API Key",
-			KeyPreview:  "rad...abc",
-			Status:      "active",
-			CreatedBy:   strPtr("user_002"),
-			LastUsedAt:  timePtr(time.Now().Add(-2 * time.Hour)),
-			RateLimit:   intPtr(500),
-			CreatedAt:     time.Now().Add(-20 * 24 * time.Hour),
-			UpdatedAt:     time.Now(),
-		},
-		{
-			ID:          "key_003",
-			WorkspaceID: "ws_001",
-			Name:        "Development API Key",
-			KeyPreview:  "rad...def",
-			Status:      "revoked",
-			CreatedBy:   strPtr("user_001"),
-			RateLimit:   intPtr(100),
-			CreatedAt:     time.Now().Add(-10 * 24 * time.Hour),
-			UpdatedAt:     time.Now(),
-		},
-	}
-
-	// Apply filters
-	if filter.Status != "" {
-		var filtered []APIKeyResponse
-		for _, key := range apiKeys {
-			if key.Status == filter.Status {
-				filtered = append(filtered, key)
-			}
-		}
-		apiKeys = filtered
-	}
-
+	var keys []db.APIKey
+	var err error
 	if filter.WorkspaceID != "" {
-		var filtered []APIKeyResponse
-		for _, key := range apiKeys {
-			if key.WorkspaceID == filter.WorkspaceID {
-				filtered = append(filtered, key)
-			}
+		keys, err = h.db.APIKeys().GetByWorkspace(r.Context(), filter.WorkspaceID, pageSize, offset)
+	} else {
+		keys, err = h.listAllAPIKeys(r.Context(), pageSize, offset)
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list api keys"})
+		return
+	}
+
+	filtered := make([]APIKeyResponse, 0, len(keys))
+	for _, key := range keys {
+		if filter.Status != "" && key.Status != filter.Status {
+			continue
 		}
-		apiKeys = filtered
-	}
-
-	if filter.Search != "" {
-		var filtered []APIKeyResponse
-		searchLower := strings.ToLower(filter.Search)
-		for _, key := range apiKeys {
-			if strings.Contains(strings.ToLower(key.Name), searchLower) {
-				filtered = append(filtered, key)
-			}
+		if filter.Search != "" && !strings.Contains(strings.ToLower(key.Name), filter.Search) {
+			continue
 		}
-		apiKeys = filtered
+		filtered = append(filtered, toAPIKeyResponse(&key))
 	}
 
-	total := len(apiKeys)
-
-	// Apply pagination
-	start := (page - 1) * pageSize
-	end := start + pageSize
-	if start > total {
-		start = total
-	}
-	if end > total {
-		end = total
-	}
-
-	pagedKeys := apiKeys[start:end]
-
-	response := APIKeyListResponse{
-		Data:     pagedKeys,
-		Total:    total,
+	writeJSON(w, http.StatusOK, APIKeyListResponse{
+		Data:     filtered,
+		Total:    len(filtered),
 		Page:     page,
 		PageSize: pageSize,
-		HasMore:  end < total,
-	}
-
-	writeJSON(w, http.StatusOK, response)
+		HasMore:  len(keys) == pageSize,
+	})
 }
 
-// getAPIKey returns a single API key by ID
 func (h *APIKeyHandler) getAPIKey(w http.ResponseWriter, r *http.Request, id string) {
-	h.log.Debug("getting api key", "id", id)
-
-	apiKey := APIKeyResponse{
-		ID:          id,
-		WorkspaceID: "ws_001",
-		Name:        "Production API Key",
-		KeyPreview:  "rad...xyz",
-		Status:      "active",
-		CreatedBy:   strPtr("user_001"),
-		LastUsedAt:  timePtr(time.Now().Add(-1 * time.Hour)),
-		RateLimit:   intPtr(1000),
-		AllowedModels: []string{"gpt-4o-mini", "claude-3-5-sonnet"},
-		AllowedAPIs:   []string{"chat", "embeddings"},
-		Metadata:      []byte(`{"department":"engineering"}`),
-		CreatedAt:     time.Now().Add(-30 * 24 * time.Hour),
-		UpdatedAt:     time.Now(),
+	key, err := h.db.APIKeys().GetByID(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get api key"})
+		return
 	}
-
-	writeJSON(w, http.StatusOK, apiKey)
+	if key == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "api key not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, toAPIKeyResponse(key))
 }
 
-// createAPIKey creates a new API key
 func (h *APIKeyHandler) createAPIKey(w http.ResponseWriter, r *http.Request) {
 	var req APIKeyCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.Warn("invalid request body", "error", err.Error())
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-
-	if req.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+	if strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.WorkspaceID) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name and workspaceId are required"})
 		return
 	}
-
-	if req.WorkspaceID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "workspaceId is required"})
-		return
+	secret := generateAPIKeySecret()
+	preview := "rad..." + secret[len(secret)-3:]
+	now := time.Now().UTC()
+	metadata := []byte("{}")
+	if len(req.Metadata) > 0 {
+		metadata = req.Metadata
 	}
-
-	h.log.Info("creating api key",
-		"name", req.Name,
-		"workspace", req.WorkspaceID,
-	)
-
-	// Generate API key secret
-	keySecret := generateAPIKeySecret()
-	keyHash := hashAPIKey(keySecret)
-	keyPreview := "rad..." + keySecret[len(keySecret)-3:]
-
-	var expiresAt *time.Time
-	if req.ExpiresAt != nil && *req.ExpiresAt != "" {
-		t, err := time.Parse(time.RFC3339, *req.ExpiresAt)
-		if err == nil {
-			expiresAt = &t
-		}
+	allowedModels, _ := json.Marshal(req.AllowedModels)
+	allowedAPIs, _ := json.Marshal(req.AllowedAPIs)
+	if len(allowedModels) == 0 {
+		allowedModels = []byte("[]")
 	}
-
-	response := APIKeyWithSecretResponse{
-		APIKeyResponse: APIKeyResponse{
-			ID:            generateID("key"),
-			WorkspaceID:   req.WorkspaceID,
-			Name:          req.Name,
-			KeyPreview:    keyPreview,
-			Status:        "active",
-			ExpiresAt:     expiresAt,
-			RateLimit:     req.RateLimit,
-			AllowedModels: req.AllowedModels,
-			AllowedAPIs:   req.AllowedAPIs,
-			Metadata:      req.Metadata,
-			CreatedAt:     time.Now(),
-			UpdatedAt:     time.Now(),
-		},
-		KeySecret: keySecret,
+	if len(allowedAPIs) == 0 {
+		allowedAPIs = []byte("[]")
 	}
-
-	// Store keyHash in database (not the keySecret)
-	_ = keyHash
-
-	writeJSON(w, http.StatusCreated, response)
-}
-
-// updateAPIKey fully updates an API key
-func (h *APIKeyHandler) updateAPIKey(w http.ResponseWriter, r *http.Request, id string) {
-	var req APIKeyUpdateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.Warn("invalid request body", "error", err.Error())
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-		return
-	}
-
-	h.log.Info("updating api key", "id", id)
-
-	apiKey := APIKeyResponse{
-		ID:            id,
-		WorkspaceID:   "ws_001",
+	apiKey := &db.APIKey{
+		ID:            generateID("key"),
+		WorkspaceID:   req.WorkspaceID,
 		Name:          req.Name,
-		KeyPreview:    "rad...xyz",
-		Status:        req.Status,
+		KeyHash:       hashAPIKey(secret),
+		KeyPreview:    preview,
+		Status:        "active",
 		RateLimit:     req.RateLimit,
 		AllowedModels: req.AllowedModels,
 		AllowedAPIs:   req.AllowedAPIs,
-		Metadata:      req.Metadata,
-		UpdatedAt:     time.Now(),
+		Metadata:      metadata,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
-
-	writeJSON(w, http.StatusOK, apiKey)
+	if req.ExpiresAt != nil && *req.ExpiresAt != "" {
+		if t, err := time.Parse(time.RFC3339, *req.ExpiresAt); err == nil {
+			apiKey.ExpiresAt = &t
+		}
+	}
+	_ = allowedModels
+	_ = allowedAPIs
+	if err := h.db.APIKeys().Create(r.Context(), apiKey); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create api key"})
+		return
+	}
+	writeJSON(w, http.StatusCreated, APIKeyWithSecretResponse{APIKeyResponse: toAPIKeyResponse(apiKey), KeySecret: secret})
 }
 
-// patchAPIKey partially updates an API key
-func (h *APIKeyHandler) patchAPIKey(w http.ResponseWriter, r *http.Request, id string) {
-	var updates map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
-		h.log.Warn("invalid request body", "error", err.Error())
+func (h *APIKeyHandler) updateAPIKey(w http.ResponseWriter, r *http.Request, id string) {
+	var req APIKeyUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-
-	h.log.Info("patching api key", "id", id, "fields", len(updates))
-
-	apiKey := APIKeyResponse{
-		ID:          id,
-		WorkspaceID: "ws_001",
-		Name:        "Production API Key",
-		KeyPreview:  "rad...xyz",
-		Status:      "active",
-		UpdatedAt:   time.Now(),
+	key, err := h.db.APIKeys().GetByID(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get api key"})
+		return
 	}
-
-	writeJSON(w, http.StatusOK, apiKey)
+	if key == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "api key not found"})
+		return
+	}
+	if req.Name != "" {
+		key.Name = req.Name
+	}
+	if req.Status != "" {
+		key.Status = req.Status
+	}
+	if req.RateLimit != nil {
+		key.RateLimit = req.RateLimit
+	}
+	if req.AllowedModels != nil {
+		key.AllowedModels = req.AllowedModels
+	}
+	if req.AllowedAPIs != nil {
+		key.AllowedAPIs = req.AllowedAPIs
+	}
+	if len(req.Metadata) > 0 {
+		key.Metadata = req.Metadata
+	}
+	if req.ExpiresAt != nil {
+		if *req.ExpiresAt == "" {
+			key.ExpiresAt = nil
+		} else if t, err := time.Parse(time.RFC3339, *req.ExpiresAt); err == nil {
+			key.ExpiresAt = &t
+		}
+	}
+	key.UpdatedAt = time.Now().UTC()
+	if err := h.db.APIKeys().Update(r.Context(), key); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update api key"})
+		return
+	}
+	writeJSON(w, http.StatusOK, toAPIKeyResponse(key))
 }
 
-// revokeAPIKey revokes an API key
+func (h *APIKeyHandler) patchAPIKey(w http.ResponseWriter, r *http.Request, id string) {
+	h.updateAPIKey(w, r, id)
+}
+
 func (h *APIKeyHandler) revokeAPIKey(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-
-	h.log.Info("revoking api key", "id", id)
-
-	apiKey := APIKeyResponse{
-		ID:          id,
-		WorkspaceID: "ws_001",
-		Name:        "Production API Key",
-		KeyPreview:  "rad...xyz",
-		Status:      "revoked",
-		RevokedAt:   timePtr(time.Now()),
-		UpdatedAt:   time.Now(),
+	key, err := h.db.APIKeys().GetByID(r.Context(), id)
+	if err != nil || key == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "api key not found"})
+		return
 	}
-
-	writeJSON(w, http.StatusOK, apiKey)
+	key.Status = "revoked"
+	key.UpdatedAt = time.Now().UTC()
+	if err := h.db.APIKeys().Update(r.Context(), key); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to revoke api key"})
+		return
+	}
+	writeJSON(w, http.StatusOK, toAPIKeyResponse(key))
 }
 
-// rotateAPIKey rotates an API key (creates new, invalidates old)
 func (h *APIKeyHandler) rotateAPIKey(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-
 	var req APIKeyRotateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		// Continue without body
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	key, err := h.db.APIKeys().GetByID(r.Context(), id)
+	if err != nil || key == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "api key not found"})
+		return
 	}
-
-	h.log.Info("rotating api key", "id", id)
-
-	// Generate new API key secret
-	keySecret := generateAPIKeySecret()
-	keyHash := hashAPIKey(keySecret)
-	keyPreview := "rad..." + keySecret[len(keySecret)-3:]
-
-	var expiresAt *time.Time
-	if req.ExpiresAt != nil && *req.ExpiresAt != "" {
-		t, err := time.Parse(time.RFC3339, *req.ExpiresAt)
-		if err == nil {
-			expiresAt = &t
+	secret := generateAPIKeySecret()
+	key.KeyHash = hashAPIKey(secret)
+	key.KeyPreview = "rad..." + secret[len(secret)-3:]
+	key.Status = "active"
+	if req.ExpiresAt != nil {
+		if *req.ExpiresAt == "" {
+			key.ExpiresAt = nil
+		} else if t, err := time.Parse(time.RFC3339, *req.ExpiresAt); err == nil {
+			key.ExpiresAt = &t
 		}
 	}
-
-	// Store new keyHash in database
-	_ = keyHash
-
-	response := APIKeyWithSecretResponse{
-		APIKeyResponse: APIKeyResponse{
-			ID:          generateID("key"),
-			WorkspaceID: "ws_001",
-			Name:        "Production API Key (Rotated)",
-			KeyPreview:  keyPreview,
-			Status:      "active",
-			ExpiresAt:   expiresAt,
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
-		},
-		KeySecret: keySecret,
+	key.UpdatedAt = time.Now().UTC()
+	if err := h.db.APIKeys().Update(r.Context(), key); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to rotate api key"})
+		return
 	}
-
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, http.StatusOK, APIKeyWithSecretResponse{APIKeyResponse: toAPIKeyResponse(key), KeySecret: secret})
 }
 
-// deleteAPIKey deletes an API key
 func (h *APIKeyHandler) deleteAPIKey(w http.ResponseWriter, r *http.Request, id string) {
-	h.log.Info("deleting api key", "id", id)
-
-	// In a real implementation, this would delete from database
-	writeJSON(w, http.StatusNoContent, nil)
+	if err := h.db.APIKeys().Delete(r.Context(), id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete api key"})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleBulkOperation handles bulk operations on API keys
 func (h *APIKeyHandler) handleBulkOperation(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-
 	var req BulkAPIKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.Warn("invalid request body", "error", err.Error())
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-
-	if len(req.IDs) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ids array is required"})
-		return
+	processed := 0
+	for _, id := range req.IDs {
+		switch req.Action {
+		case "delete":
+			if err := h.db.APIKeys().Delete(r.Context(), id); err == nil {
+				processed++
+			}
+		case "revoke", "activate":
+			key, err := h.db.APIKeys().GetByID(r.Context(), id)
+			if err != nil || key == nil {
+				continue
+			}
+			if req.Action == "revoke" {
+				key.Status = "revoked"
+			} else {
+				key.Status = "active"
+			}
+			key.UpdatedAt = time.Now().UTC()
+			if err := h.db.APIKeys().Update(r.Context(), key); err == nil {
+				processed++
+			}
+		}
 	}
-
-	if req.Action == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action is required"})
-		return
-	}
-
-	h.log.Info("bulk api key operation",
-		"action", req.Action,
-		"count", len(req.IDs),
-	)
-
-	validActions := map[string]bool{
-		"activate": true,
-		"revoke":   true,
-		"delete":   true,
-	}
-	if !validActions[req.Action] {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid action"})
-		return
-	}
-
-	result := map[string]interface{}{
-		"processed": len(req.IDs),
-		"action":    req.Action,
-		"success":   true,
-	}
-
-	writeJSON(w, http.StatusOK, result)
+	writeJSON(w, http.StatusOK, map[string]any{"processed": processed, "action": req.Action, "success": true})
 }
 
-// parseFilter parses filter parameters from request
-func (h *APIKeyHandler) parseFilter(r *http.Request) APIKeyFilter {
-	return APIKeyFilter{
-		Status:      r.URL.Query().Get("status"),
-		WorkspaceID: r.URL.Query().Get("workspaceId"),
-		Search:      r.URL.Query().Get("search"),
-		SortBy:      r.URL.Query().Get("sortBy"),
-		SortOrder:   r.URL.Query().Get("sortOrder"),
+func (h *APIKeyHandler) listAllAPIKeys(ctx context.Context, limit, offset int) ([]db.APIKey, error) {
+	workspaces, err := h.db.Workspaces().List(ctx, 500, 0)
+	if err != nil {
+		return nil, err
+	}
+	all := make([]db.APIKey, 0)
+	for _, ws := range workspaces {
+		keys, err := h.db.APIKeys().GetByWorkspace(ctx, ws.ID, 500, 0)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, keys...)
+	}
+	if offset >= len(all) {
+		return []db.APIKey{}, nil
+	}
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	return all[offset:end], nil
+}
+
+func toAPIKeyResponse(key *db.APIKey) APIKeyResponse {
+	return APIKeyResponse{
+		ID:            key.ID,
+		WorkspaceID:   key.WorkspaceID,
+		Name:          key.Name,
+		KeyPreview:    key.KeyPreview,
+		Status:        key.Status,
+		CreatedBy:     key.CreatedBy,
+		ExpiresAt:     key.ExpiresAt,
+		LastUsedAt:    key.LastUsedAt,
+		RateLimit:     key.RateLimit,
+		AllowedModels: key.AllowedModels,
+		AllowedAPIs:   key.AllowedAPIs,
+		Metadata:      key.Metadata,
+		CreatedAt:     key.CreatedAt,
+		UpdatedAt:     key.UpdatedAt,
 	}
 }
 
-// Helper functions
 func generateAPIKeySecret() string {
-	// Generate a secure random key: rad_<32 hex chars>
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return "rad_" + hex.EncodeToString(b)
 }
 
 func hashAPIKey(key string) string {
-	// In a real implementation, this would use a proper hash like bcrypt or argon2
-	// For now, just return a placeholder
-	return key + "_hash"
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
 }

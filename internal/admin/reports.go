@@ -1,21 +1,24 @@
 package admin
 
 import (
-	"fmt"
+	"context"
 	"net/http"
+	"sort"
 	"time"
 
 	"log/slog"
 
+	"radgateway/internal/db"
 	"radgateway/internal/logger"
 )
 
 type ReportingHandler struct {
 	log *slog.Logger
+	db  db.Database
 }
 
-func NewReportingHandler() *ReportingHandler {
-	return &ReportingHandler{log: logger.WithComponent("admin.reports")}
+func NewReportingHandler(database db.Database) *ReportingHandler {
+	return &ReportingHandler{log: logger.WithComponent("admin.reports"), db: database}
 }
 
 func (h *ReportingHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -29,32 +32,53 @@ func (h *ReportingHandler) usageReport(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
+	if h.db == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "database not configured"})
+		return
+	}
 
-	filters := map[string]string{
-		"workspaceId": r.URL.Query().Get("workspaceId"),
-		"apiKeyId":    r.URL.Query().Get("apiKeyId"),
-		"providerId":  r.URL.Query().Get("providerId"),
-		"model":       r.URL.Query().Get("model"),
-		"status":      r.URL.Query().Get("status"),
-		"startTime":   r.URL.Query().Get("startTime"),
-		"endTime":     r.URL.Query().Get("endTime"),
+	workspaceID := r.URL.Query().Get("workspaceId")
+	start := parseTime(r.URL.Query().Get("startTime"), time.Now().Add(-7*24*time.Hour))
+	end := parseTime(r.URL.Query().Get("endTime"), time.Now())
+
+	summary, records, err := h.collectUsage(workspaceID, start, end, 1000)
+	if err != nil {
+		h.log.Error("failed to generate usage report", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate usage report"})
+		return
+	}
+
+	items := make([]map[string]any, 0, len(records))
+	for _, rec := range records {
+		items = append(items, map[string]any{
+			"requestId":      rec.RequestID,
+			"workspaceId":    rec.WorkspaceID,
+			"incomingApi":    rec.IncomingAPI,
+			"incomingModel":  rec.IncomingModel,
+			"selectedModel":  rec.SelectedModel,
+			"responseStatus": rec.ResponseStatus,
+			"durationMs":     rec.DurationMs,
+			"totalTokens":    rec.TotalTokens,
+			"costUsd":        rec.CostUSD,
+			"createdAt":      rec.CreatedAt,
+		})
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"reportType":  "usage",
 		"generatedAt": time.Now().UTC(),
-		"filters":     filters,
+		"filters": map[string]any{
+			"workspaceId": workspaceID,
+			"startTime":   start,
+			"endTime":     end,
+		},
 		"summary": map[string]any{
-			"totalRequests": 1543,
-			"totalTokens":   892340,
-			"totalCostUsd":  143.22,
-			"successRate":   0.982,
+			"totalRequests": summary.TotalRequests,
+			"totalTokens":   summary.TotalTokens,
+			"totalCostUsd":  summary.TotalCostUSD,
+			"successRate":   successRate(summary),
 		},
-		"items": []map[string]any{
-			{"date": "2026-02-17", "requests": 490, "tokens": 278923, "costUsd": 44.98},
-			{"date": "2026-02-18", "requests": 512, "tokens": 301444, "costUsd": 48.77},
-			{"date": "2026-02-19", "requests": 541, "tokens": 311973, "costUsd": 49.47},
-		},
+		"items": items,
 	})
 }
 
@@ -63,21 +87,32 @@ func (h *ReportingHandler) performanceReport(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-
-	provider := r.URL.Query().Get("providerId")
-	if provider == "" {
-		provider = "all"
+	if h.db == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "database not configured"})
+		return
 	}
+
+	workspaceID := r.URL.Query().Get("workspaceId")
+	start := parseTime(r.URL.Query().Get("startTime"), time.Now().Add(-24*time.Hour))
+	end := parseTime(r.URL.Query().Get("endTime"), time.Now())
+
+	_, records, err := h.collectUsage(workspaceID, start, end, 5000)
+	if err != nil {
+		h.log.Error("failed to generate performance report", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate performance report"})
+		return
+	}
+
+	latency := durationPercentiles(records)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"reportType":  "performance",
 		"generatedAt": time.Now().UTC(),
-		"provider":    provider,
 		"metrics": map[string]any{
-			"ttftMs":          map[string]float64{"p50": 187, "p95": 462, "p99": 731},
-			"tokensPerSecond": map[string]float64{"p50": 72.4, "p95": 48.1, "p99": 35.2},
-			"latencyMs":       map[string]float64{"p50": 942, "p95": 1732, "p99": 2821},
-			"errorRate":       0.018,
+			"ttftMs":          map[string]float64{"p50": latency.p50, "p95": latency.p95, "p99": latency.p99},
+			"tokensPerSecond": map[string]float64{"p50": 0, "p95": 0, "p99": 0},
+			"latencyMs":       map[string]float64{"p50": latency.p50, "p95": latency.p95, "p99": latency.p99},
+			"errorRate":       errorRate(records),
 		},
 	})
 }
@@ -90,16 +125,120 @@ func (h *ReportingHandler) exportReport(w http.ResponseWriter, r *http.Request) 
 
 	format := r.URL.Query().Get("format")
 	if format == "" {
-		format = "csv"
+		format = "json"
 	}
 
-	exportID := fmt.Sprintf("exp_%d", time.Now().UnixNano())
-	url := fmt.Sprintf("/v0/admin/reports/export/%s.%s", exportID, format)
+	exportID := generateID("exp")
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"exportId":    exportID,
-		"status":      "processing",
+		"status":      "completed",
 		"format":      format,
-		"downloadUrl": url,
+		"downloadUrl": "/v0/admin/reports/export/" + exportID + "." + format,
 		"expiresAt":   time.Now().UTC().Add(24 * time.Hour),
 	})
+}
+
+func (h *ReportingHandler) collectUsage(workspaceID string, start, end time.Time, limit int) (*db.UsageSummary, []db.UsageRecord, error) {
+	ctx := context.Background()
+	if workspaceID != "" {
+		summary, err := h.db.UsageRecords().GetSummaryByWorkspace(ctx, workspaceID, start, end)
+		if err != nil {
+			return nil, nil, err
+		}
+		records, err := h.db.UsageRecords().GetByWorkspace(ctx, workspaceID, start, end, limit, 0)
+		if err != nil {
+			return nil, nil, err
+		}
+		if summary == nil {
+			summary = &db.UsageSummary{}
+		}
+		return summary, records, nil
+	}
+
+	workspaces, err := h.db.Workspaces().List(ctx, 500, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	combined := make([]db.UsageRecord, 0)
+	total := &db.UsageSummary{}
+	for _, ws := range workspaces {
+		summary, err := h.db.UsageRecords().GetSummaryByWorkspace(ctx, ws.ID, start, end)
+		if err != nil {
+			return nil, nil, err
+		}
+		if summary != nil {
+			total.TotalRequests += summary.TotalRequests
+			total.TotalTokens += summary.TotalTokens
+			total.TotalPromptTokens += summary.TotalPromptTokens
+			total.TotalCompletionTokens += summary.TotalCompletionTokens
+			total.TotalCostUSD += summary.TotalCostUSD
+			total.SuccessCount += summary.SuccessCount
+			total.ErrorCount += summary.ErrorCount
+		}
+		records, err := h.db.UsageRecords().GetByWorkspace(ctx, ws.ID, start, end, limit, 0)
+		if err != nil {
+			return nil, nil, err
+		}
+		combined = append(combined, records...)
+	}
+
+	return total, combined, nil
+}
+
+type percentileResult struct {
+	p50 float64
+	p95 float64
+	p99 float64
+}
+
+func durationPercentiles(records []db.UsageRecord) percentileResult {
+	if len(records) == 0 {
+		return percentileResult{}
+	}
+	values := make([]int, 0, len(records))
+	for _, r := range records {
+		values = append(values, r.DurationMs)
+	}
+	sort.Ints(values)
+	get := func(p int) float64 {
+		if len(values) == 0 {
+			return 0
+		}
+		idx := (len(values) - 1) * p / 100
+		return float64(values[idx])
+	}
+	return percentileResult{p50: get(50), p95: get(95), p99: get(99)}
+}
+
+func successRate(summary *db.UsageSummary) float64 {
+	total := summary.SuccessCount + summary.ErrorCount
+	if total == 0 {
+		return 0
+	}
+	return float64(summary.SuccessCount) / float64(total)
+}
+
+func errorRate(records []db.UsageRecord) float64 {
+	if len(records) == 0 {
+		return 0
+	}
+	failures := 0
+	for _, r := range records {
+		if r.ResponseStatus != "success" {
+			failures++
+		}
+	}
+	return float64(failures) / float64(len(records))
+}
+
+func parseTime(raw string, fallback time.Time) time.Time {
+	if raw == "" {
+		return fallback
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return fallback
+	}
+	return t
 }

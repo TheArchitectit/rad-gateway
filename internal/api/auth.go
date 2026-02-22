@@ -19,10 +19,10 @@ import (
 
 // AuthHandler handles authentication endpoints.
 type AuthHandler struct {
-	jwtManager    *auth.JWTManager
+	jwtManager     *auth.JWTManager
 	passwordHasher *auth.PasswordHasher
-	repo          db.UserRepository
-	log           *slog.Logger
+	repo           db.UserRepository
+	log            *slog.Logger
 }
 
 // NewAuthHandler creates a new auth handler.
@@ -90,8 +90,8 @@ func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// Fetch user from database
 	ctx := r.Context()
 	user, err := h.repo.GetByEmail(ctx, req.Email)
-	if err != nil {
-		h.log.Debug("login: user not found", "email", req.Email, "error", err.Error())
+	if err != nil || user == nil {
+		h.log.Debug("login: user not found", "email", req.Email, "error", err)
 		// Use generic error to prevent user enumeration
 		writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
 		return

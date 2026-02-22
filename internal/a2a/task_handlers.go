@@ -1,14 +1,52 @@
 package a2a
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"radgateway/internal/core"
+	"radgateway/internal/logger"
+	"radgateway/internal/models"
 )
 
-func (h *Handlers) handleSendTask(w http.ResponseWriter, r *http.Request) {
+// TaskExecutor defines the interface for executing tasks via the gateway
+type TaskExecutor interface {
+	Execute(ctx context.Context, apiType string, model string, payload any) (models.ProviderResult, error)
+}
+
+type gatewayExecutor struct {
+	gateway *core.Gateway
+}
+
+func (g *gatewayExecutor) Execute(ctx context.Context, apiType string, model string, payload any) (models.ProviderResult, error) {
+	result, _, err := g.gateway.Handle(ctx, apiType, model, payload)
+	return result, err
+}
+
+type TaskHandlers struct {
+	taskStore TaskStore
+	executor  TaskExecutor
+	log       *slog.Logger
+}
+
+func NewTaskHandlers(taskStore TaskStore, executor TaskExecutor) *TaskHandlers {
+	return &TaskHandlers{
+		taskStore: taskStore,
+		executor:  executor,
+		log:       logger.WithComponent("a2a_task_handlers"),
+	}
+}
+
+func NewTaskHandlersWithGateway(taskStore TaskStore, gateway *core.Gateway) *TaskHandlers {
+	return NewTaskHandlers(taskStore, &gatewayExecutor{gateway: gateway})
+}
+
+func (h *TaskHandlers) handleSendTask(w http.ResponseWriter, r *http.Request) {
 	if h.taskStore == nil {
 		writeTaskError(w, http.StatusServiceUnavailable, "task store not configured")
 		return
@@ -48,36 +86,44 @@ func (h *Handlers) handleSendTask(w http.ResponseWriter, r *http.Request) {
 	task.Status = TaskStateWorking
 	task.UpdatedAt = time.Now().UTC()
 	if err := h.taskStore.UpdateTask(r.Context(), task); err != nil {
-		h.log.Error("failed to update task", "id", task.ID, "error", err)
+		h.log.Error("failed to update task status", "id", task.ID, "error", err)
 		writeTaskError(w, http.StatusInternalServerError, "failed to update task")
 		return
 	}
 
-	payload, err := json.Marshal(map[string]string{"text": fmt.Sprintf("Task processed: %s", req.Message.Content)})
+	result, err := h.executeTask(r.Context(), task, req)
 	if err != nil {
-		writeTaskError(w, http.StatusInternalServerError, "failed to build artifact")
+		h.log.Error("task execution failed", "id", task.ID, "error", err)
+		task.Status = TaskStateFailed
+		task.UpdatedAt = time.Now().UTC()
+		_ = h.taskStore.UpdateTask(r.Context(), task)
+		writeTaskError(w, http.StatusInternalServerError, "task execution failed")
 		return
 	}
 
-	task.Artifacts = []Artifact{{
-		Type:    "text",
-		Content: payload,
-		Name:    "result",
-	}}
+	artifact := h.createArtifactFromResult(result)
+	task.Artifacts = []Artifact{artifact}
 	task.Status = TaskStateCompleted
 	task.UpdatedAt = time.Now().UTC()
+
 	if err := h.taskStore.UpdateTask(r.Context(), task); err != nil {
 		h.log.Error("failed to complete task", "id", task.ID, "error", err)
 		writeTaskError(w, http.StatusInternalServerError, "failed to complete task")
 		return
 	}
 
+	h.log.Info("task completed",
+		"id", task.ID,
+		"session_id", task.SessionID,
+		"status", task.Status,
+	)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(SendTaskResponse{Task: *task})
 }
 
-func (h *Handlers) handleSendTaskSubscribe(w http.ResponseWriter, r *http.Request) {
+func (h *TaskHandlers) handleSendTaskSubscribe(w http.ResponseWriter, r *http.Request) {
 	if h.taskStore == nil {
 		writeTaskError(w, http.StatusServiceUnavailable, "task store not configured")
 		return
@@ -143,8 +189,38 @@ func (h *Handlers) handleSendTaskSubscribe(w http.ResponseWriter, r *http.Reques
 		Timestamp: time.Now().UTC(),
 	})
 
-	payload, _ := json.Marshal(map[string]string{"text": fmt.Sprintf("Task processed: %s", req.Message.Content)})
-	artifact := Artifact{Type: "text", Content: payload, Name: "result"}
+	resultChan := make(chan struct {
+		result models.ProviderResult
+		err    error
+	}, 1)
+
+	go func() {
+		result, err := h.executeTask(context.Background(), task, req)
+		resultChan <- struct {
+			result models.ProviderResult
+			err    error
+		}{result, err}
+	}()
+
+	res := <-resultChan
+
+	if res.err != nil {
+		h.log.Error("task execution failed", "id", task.ID, "error", res.err)
+		task.Status = TaskStateFailed
+		task.UpdatedAt = time.Now().UTC()
+		_ = h.taskStore.UpdateTask(r.Context(), task)
+
+		sendTaskEvent(w, flusher, TaskEvent{
+			Type:      string(TaskEventTypeFailed),
+			TaskID:    task.ID,
+			Status:    TaskStateFailed,
+			Message:   "task execution failed: " + res.err.Error(),
+			Timestamp: time.Now().UTC(),
+		})
+		return
+	}
+
+	artifact := h.createArtifactFromResult(res.result)
 	task.Artifacts = []Artifact{artifact}
 	task.Status = TaskStateCompleted
 	task.UpdatedAt = time.Now().UTC()
@@ -164,9 +240,14 @@ func (h *Handlers) handleSendTaskSubscribe(w http.ResponseWriter, r *http.Reques
 		Message:   "task completed",
 		Timestamp: time.Now().UTC(),
 	})
+
+	h.log.Info("streaming task completed",
+		"id", task.ID,
+		"session_id", task.SessionID,
+	)
 }
 
-func (h *Handlers) handleTaskByID(w http.ResponseWriter, r *http.Request) {
+func (h *TaskHandlers) handleTaskByID(w http.ResponseWriter, r *http.Request) {
 	if h.taskStore == nil {
 		writeTaskError(w, http.StatusServiceUnavailable, "task store not configured")
 		return
@@ -194,6 +275,7 @@ func (h *Handlers) handleTaskByID(w http.ResponseWriter, r *http.Request) {
 			writeTaskError(w, http.StatusNotFound, "task not found")
 			return
 		}
+		h.log.Error("failed to get task", "id", taskID, "error", err)
 		writeTaskError(w, http.StatusInternalServerError, "failed to get task")
 		return
 	}
@@ -203,7 +285,7 @@ func (h *Handlers) handleTaskByID(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(GetTaskResponse{Task: *task})
 }
 
-func (h *Handlers) handleCancelTask(w http.ResponseWriter, r *http.Request, taskID string) {
+func (h *TaskHandlers) handleCancelTask(w http.ResponseWriter, r *http.Request, taskID string) {
 	if r.Method != http.MethodPost {
 		writeTaskError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -215,25 +297,87 @@ func (h *Handlers) handleCancelTask(w http.ResponseWriter, r *http.Request, task
 			writeTaskError(w, http.StatusNotFound, "task not found")
 			return
 		}
+		h.log.Error("failed to get task for cancel", "id", taskID, "error", err)
 		writeTaskError(w, http.StatusInternalServerError, "failed to get task")
 		return
 	}
 
-	if IsTerminalState(task.Status) {
-		writeTaskError(w, http.StatusConflict, "task already terminal")
+	if !task.CanTransitionTo(TaskStateCanceled) {
+		h.log.Warn("invalid cancel transition", "id", taskID, "current_status", task.Status)
+		writeTaskError(w, http.StatusConflict, fmt.Sprintf("cannot cancel task in %s state", task.Status))
 		return
 	}
 
 	task.Status = TaskStateCanceled
 	task.UpdatedAt = time.Now().UTC()
 	if err := h.taskStore.UpdateTask(r.Context(), task); err != nil {
+		h.log.Error("failed to cancel task", "id", taskID, "error", err)
 		writeTaskError(w, http.StatusInternalServerError, "failed to cancel task")
 		return
 	}
 
+	h.log.Info("task canceled", "id", taskID)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(CancelTaskResponse{Task: *task})
+}
+
+func (h *TaskHandlers) executeTask(ctx context.Context, task *Task, req SendTaskRequest) (models.ProviderResult, error) {
+	if h.executor == nil {
+		return models.ProviderResult{}, fmt.Errorf("task executor not configured")
+	}
+
+	apiType := "chat"
+	model := "gpt-4o-mini"
+
+	if len(req.Metadata) > 0 {
+		var metadata map[string]interface{}
+		if err := json.Unmarshal(req.Metadata, &metadata); err == nil {
+			if t, ok := metadata["api_type"].(string); ok && t != "" {
+				apiType = t
+			}
+			if m, ok := metadata["model"].(string); ok && m != "" {
+				model = m
+			}
+		}
+	}
+
+	payload := models.ChatCompletionRequest{
+		Model: model,
+		Messages: []models.Message{
+			{Role: "user", Content: task.Message.Content},
+		},
+	}
+
+	if len(req.Metadata) > 0 {
+		var metadata map[string]interface{}
+		if err := json.Unmarshal(req.Metadata, &metadata); err == nil {
+			if systemMsg, ok := metadata["system_message"].(string); ok && systemMsg != "" {
+				payload.Messages = append([]models.Message{
+					{Role: "system", Content: systemMsg},
+				}, payload.Messages...)
+			}
+		}
+	}
+
+	return h.executor.Execute(ctx, apiType, model, payload)
+}
+
+func (h *TaskHandlers) createArtifactFromResult(result models.ProviderResult) Artifact {
+	content, _ := json.Marshal(map[string]interface{}{
+		"model":    result.Model,
+		"provider": result.Provider,
+		"payload":  result.Payload,
+		"usage":    result.Usage,
+	})
+
+	return Artifact{
+		Type:        "llm_result",
+		Content:     content,
+		Name:        "result",
+		Description: fmt.Sprintf("Generated by %s/%s", result.Provider, result.Model),
+	}
 }
 
 func parseTaskPath(path string) (string, string) {

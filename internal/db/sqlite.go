@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -17,9 +18,9 @@ var migrationsFS embed.FS
 
 // SQLiteDB implements the Database interface for SQLite.
 type SQLiteDB struct {
-	db         *sql.DB
-	config     Config
-	repos      *repositories
+	db     *sql.DB
+	config Config
+	repos  *repositories
 }
 
 // repositories holds all repository implementations.
@@ -121,17 +122,17 @@ func (s *SQLiteDB) QueryRowContext(ctx context.Context, query string, args ...in
 }
 
 // Repository accessors
-func (s *SQLiteDB) Workspaces() WorkspaceRepository   { return s.repos.workspaces }
-func (s *SQLiteDB) Users() UserRepository             { return s.repos.users }
-func (s *SQLiteDB) Roles() RoleRepository             { return s.repos.roles }
-func (s *SQLiteDB) Permissions() PermissionRepository { return s.repos.permissions }
-func (s *SQLiteDB) Tags() TagRepository               { return s.repos.tags }
-func (s *SQLiteDB) Providers() ProviderRepository     { return s.repos.providers }
+func (s *SQLiteDB) Workspaces() WorkspaceRepository     { return s.repos.workspaces }
+func (s *SQLiteDB) Users() UserRepository               { return s.repos.users }
+func (s *SQLiteDB) Roles() RoleRepository               { return s.repos.roles }
+func (s *SQLiteDB) Permissions() PermissionRepository   { return s.repos.permissions }
+func (s *SQLiteDB) Tags() TagRepository                 { return s.repos.tags }
+func (s *SQLiteDB) Providers() ProviderRepository       { return s.repos.providers }
 func (s *SQLiteDB) ControlRooms() ControlRoomRepository { return s.repos.controlRooms }
-func (s *SQLiteDB) APIKeys() APIKeyRepository         { return s.repos.apiKeys }
-func (s *SQLiteDB) Quotas() QuotaRepository           { return s.repos.quotas }
+func (s *SQLiteDB) APIKeys() APIKeyRepository           { return s.repos.apiKeys }
+func (s *SQLiteDB) Quotas() QuotaRepository             { return s.repos.quotas }
 func (s *SQLiteDB) UsageRecords() UsageRecordRepository { return s.repos.usageRecords }
-func (s *SQLiteDB) TraceEvents() TraceEventRepository { return s.repos.traceEvents }
+func (s *SQLiteDB) TraceEvents() TraceEventRepository   { return s.repos.traceEvents }
 func (s *SQLiteDB) ModelCards() ModelCardRepository     { return s.repos.modelCards }
 
 // DB returns the underlying *sql.DB for migrations and advanced operations.
@@ -442,8 +443,12 @@ func (r *sqlitePermissionRepo) Create(ctx context.Context, p *Permission) error 
 		p.ID, p.Name, p.Description, p.ResourceType, p.Action)
 	return err
 }
-func (r *sqlitePermissionRepo) GetByID(ctx context.Context, id string) (*Permission, error) { return nil, nil }
-func (r *sqlitePermissionRepo) GetByName(ctx context.Context, name string) (*Permission, error) { return nil, nil }
+func (r *sqlitePermissionRepo) GetByID(ctx context.Context, id string) (*Permission, error) {
+	return nil, nil
+}
+func (r *sqlitePermissionRepo) GetByName(ctx context.Context, name string) (*Permission, error) {
+	return nil, nil
+}
 func (r *sqlitePermissionRepo) List(ctx context.Context) ([]Permission, error) { return nil, nil }
 func (r *sqlitePermissionRepo) AssignToRole(ctx context.Context, roleID, permissionID string) error {
 	_, err := r.db.ExecContext(ctx, `INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)`, roleID, permissionID)
@@ -453,8 +458,12 @@ func (r *sqlitePermissionRepo) RemoveFromRole(ctx context.Context, roleID, permi
 	_, err := r.db.ExecContext(ctx, `DELETE FROM role_permissions WHERE role_id = ? AND permission_id = ?`, roleID, permissionID)
 	return err
 }
-func (r *sqlitePermissionRepo) GetRolePermissions(ctx context.Context, roleID string) ([]Permission, error) { return nil, nil }
-func (r *sqlitePermissionRepo) GetUserPermissions(ctx context.Context, userID string) ([]Permission, error) { return nil, nil }
+func (r *sqlitePermissionRepo) GetRolePermissions(ctx context.Context, roleID string) ([]Permission, error) {
+	return nil, nil
+}
+func (r *sqlitePermissionRepo) GetUserPermissions(ctx context.Context, userID string) ([]Permission, error) {
+	return nil, nil
+}
 
 type sqliteTagRepo struct{ db *sql.DB }
 
@@ -464,8 +473,12 @@ func (r *sqliteTagRepo) Create(ctx context.Context, tag *Tag) error {
 	return err
 }
 func (r *sqliteTagRepo) GetByID(ctx context.Context, id string) (*Tag, error) { return nil, nil }
-func (r *sqliteTagRepo) GetByCategoryValue(ctx context.Context, workspaceID, category, value string) (*Tag, error) { return nil, nil }
-func (r *sqliteTagRepo) GetByWorkspace(ctx context.Context, workspaceID string) ([]Tag, error) { return nil, nil }
+func (r *sqliteTagRepo) GetByCategoryValue(ctx context.Context, workspaceID, category, value string) (*Tag, error) {
+	return nil, nil
+}
+func (r *sqliteTagRepo) GetByWorkspace(ctx context.Context, workspaceID string) ([]Tag, error) {
+	return nil, nil
+}
 func (r *sqliteTagRepo) Delete(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM tags WHERE id = ?`, id)
 	return err
@@ -478,7 +491,9 @@ func (r *sqliteTagRepo) RemoveFromProvider(ctx context.Context, providerID, tagI
 	_, err := r.db.ExecContext(ctx, `DELETE FROM provider_tags WHERE provider_id = ? AND tag_id = ?`, providerID, tagID)
 	return err
 }
-func (r *sqliteTagRepo) GetProviderTags(ctx context.Context, providerID string) ([]Tag, error) { return nil, nil }
+func (r *sqliteTagRepo) GetProviderTags(ctx context.Context, providerID string) ([]Tag, error) {
+	return nil, nil
+}
 func (r *sqliteTagRepo) AssignToAPIKey(ctx context.Context, apiKeyID, tagID string) error {
 	_, err := r.db.ExecContext(ctx, `INSERT INTO api_key_tags (api_key_id, tag_id) VALUES (?, ?)`, apiKeyID, tagID)
 	return err
@@ -487,7 +502,9 @@ func (r *sqliteTagRepo) RemoveFromAPIKey(ctx context.Context, apiKeyID, tagID st
 	_, err := r.db.ExecContext(ctx, `DELETE FROM api_key_tags WHERE api_key_id = ? AND tag_id = ?`, apiKeyID, tagID)
 	return err
 }
-func (r *sqliteTagRepo) GetAPIKeyTags(ctx context.Context, apiKeyID string) ([]Tag, error) { return nil, nil }
+func (r *sqliteTagRepo) GetAPIKeyTags(ctx context.Context, apiKeyID string) ([]Tag, error) {
+	return nil, nil
+}
 
 type sqliteProviderRepo struct{ db *sql.DB }
 
@@ -497,11 +514,99 @@ func (r *sqliteProviderRepo) Create(ctx context.Context, p *Provider) error {
 	_, err := r.db.ExecContext(ctx, query, p.ID, p.WorkspaceID, p.Slug, p.Name, p.ProviderType, p.BaseURL, p.APIKeyEncrypted, p.Config, p.Status, p.Priority, p.Weight, p.CreatedAt, p.UpdatedAt)
 	return err
 }
-func (r *sqliteProviderRepo) GetByID(ctx context.Context, id string) (*Provider, error) { return nil, nil }
-func (r *sqliteProviderRepo) GetBySlug(ctx context.Context, workspaceID, slug string) (*Provider, error) { return nil, nil }
-func (r *sqliteProviderRepo) GetByWorkspace(ctx context.Context, workspaceID string) ([]Provider, error) { return nil, nil }
-func (r *sqliteProviderRepo) GetByTags(ctx context.Context, workspaceID string, tagIDs []string) ([]Provider, error) { return nil, nil }
-func (r *sqliteProviderRepo) Update(ctx context.Context, p *Provider) error { return nil }
+func (r *sqliteProviderRepo) GetByID(ctx context.Context, id string) (*Provider, error) {
+	p := &Provider{}
+	var apiKey sql.NullString
+	err := r.db.QueryRowContext(ctx, `SELECT id, workspace_id, slug, name, provider_type, base_url, api_key_encrypted, config, status, priority, weight, created_at, updated_at FROM providers WHERE id = ?`, id).
+		Scan(&p.ID, &p.WorkspaceID, &p.Slug, &p.Name, &p.ProviderType, &p.BaseURL, &apiKey, &p.Config, &p.Status, &p.Priority, &p.Weight, &p.CreatedAt, &p.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if apiKey.Valid {
+		p.APIKeyEncrypted = &apiKey.String
+	}
+	return p, nil
+}
+
+func (r *sqliteProviderRepo) GetBySlug(ctx context.Context, workspaceID, slug string) (*Provider, error) {
+	p := &Provider{}
+	var apiKey sql.NullString
+	err := r.db.QueryRowContext(ctx, `SELECT id, workspace_id, slug, name, provider_type, base_url, api_key_encrypted, config, status, priority, weight, created_at, updated_at FROM providers WHERE workspace_id = ? AND slug = ?`, workspaceID, slug).
+		Scan(&p.ID, &p.WorkspaceID, &p.Slug, &p.Name, &p.ProviderType, &p.BaseURL, &apiKey, &p.Config, &p.Status, &p.Priority, &p.Weight, &p.CreatedAt, &p.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if apiKey.Valid {
+		p.APIKeyEncrypted = &apiKey.String
+	}
+	return p, nil
+}
+
+func (r *sqliteProviderRepo) GetByWorkspace(ctx context.Context, workspaceID string) ([]Provider, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, workspace_id, slug, name, provider_type, base_url, api_key_encrypted, config, status, priority, weight, created_at, updated_at FROM providers WHERE workspace_id = ? ORDER BY created_at DESC`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	providers := make([]Provider, 0)
+	for rows.Next() {
+		var p Provider
+		var apiKey sql.NullString
+		if err := rows.Scan(&p.ID, &p.WorkspaceID, &p.Slug, &p.Name, &p.ProviderType, &p.BaseURL, &apiKey, &p.Config, &p.Status, &p.Priority, &p.Weight, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if apiKey.Valid {
+			p.APIKeyEncrypted = &apiKey.String
+		}
+		providers = append(providers, p)
+	}
+	return providers, rows.Err()
+}
+
+func (r *sqliteProviderRepo) GetByTags(ctx context.Context, workspaceID string, tagIDs []string) ([]Provider, error) {
+	if len(tagIDs) == 0 {
+		return r.GetByWorkspace(ctx, workspaceID)
+	}
+	placeholders := make([]string, len(tagIDs))
+	args := make([]interface{}, 0, len(tagIDs)+1)
+	args = append(args, workspaceID)
+	for i, id := range tagIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	query := fmt.Sprintf(`SELECT DISTINCT p.id, p.workspace_id, p.slug, p.name, p.provider_type, p.base_url, p.api_key_encrypted, p.config, p.status, p.priority, p.weight, p.created_at, p.updated_at FROM providers p JOIN provider_tags pt ON p.id = pt.provider_id WHERE p.workspace_id = ? AND pt.tag_id IN (%s) ORDER BY p.created_at DESC`, strings.Join(placeholders, ","))
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	providers := make([]Provider, 0)
+	for rows.Next() {
+		var p Provider
+		var apiKey sql.NullString
+		if err := rows.Scan(&p.ID, &p.WorkspaceID, &p.Slug, &p.Name, &p.ProviderType, &p.BaseURL, &apiKey, &p.Config, &p.Status, &p.Priority, &p.Weight, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if apiKey.Valid {
+			p.APIKeyEncrypted = &apiKey.String
+		}
+		providers = append(providers, p)
+	}
+	return providers, rows.Err()
+}
+
+func (r *sqliteProviderRepo) Update(ctx context.Context, p *Provider) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE providers SET slug = ?, name = ?, provider_type = ?, base_url = ?, api_key_encrypted = ?, config = ?, status = ?, priority = ?, weight = ?, updated_at = ? WHERE id = ?`, p.Slug, p.Name, p.ProviderType, p.BaseURL, p.APIKeyEncrypted, p.Config, p.Status, p.Priority, p.Weight, p.UpdatedAt, p.ID)
+	return err
+}
 func (r *sqliteProviderRepo) Delete(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM providers WHERE id = ?`, id)
 	return err
@@ -512,14 +617,61 @@ func (r *sqliteProviderRepo) UpdateHealth(ctx context.Context, health *ProviderH
 	_, err := r.db.ExecContext(ctx, query, health.ProviderID, health.Healthy, health.LastCheckAt, health.LastSuccessAt, health.ConsecutiveFailures, health.LatencyMs, health.ErrorMessage, health.UpdatedAt)
 	return err
 }
-func (r *sqliteProviderRepo) GetHealth(ctx context.Context, providerID string) (*ProviderHealth, error) { return nil, nil }
+func (r *sqliteProviderRepo) GetHealth(ctx context.Context, providerID string) (*ProviderHealth, error) {
+	h := &ProviderHealth{}
+	var lastSuccess sql.NullTime
+	var latency sql.NullInt64
+	var errMsg sql.NullString
+	err := r.db.QueryRowContext(ctx, `SELECT provider_id, healthy, last_check_at, last_success_at, consecutive_failures, latency_ms, error_message, updated_at FROM provider_health WHERE provider_id = ?`, providerID).
+		Scan(&h.ProviderID, &h.Healthy, &h.LastCheckAt, &lastSuccess, &h.ConsecutiveFailures, &latency, &errMsg, &h.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if lastSuccess.Valid {
+		t := lastSuccess.Time
+		h.LastSuccessAt = &t
+	}
+	if latency.Valid {
+		v := int(latency.Int64)
+		h.LatencyMs = &v
+	}
+	if errMsg.Valid {
+		s := errMsg.String
+		h.ErrorMessage = &s
+	}
+	return h, nil
+}
 func (r *sqliteProviderRepo) UpdateCircuitBreaker(ctx context.Context, state *CircuitBreakerState) error {
 	query := `INSERT OR REPLACE INTO circuit_breaker_states (provider_id, state, failures, successes, last_failure_at, half_open_requests, opened_at, updated_at)
 			  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err := r.db.ExecContext(ctx, query, state.ProviderID, state.State, state.Failures, state.Successes, state.LastFailureAt, state.HalfOpenRequests, state.OpenedAt, state.UpdatedAt)
 	return err
 }
-func (r *sqliteProviderRepo) GetCircuitBreaker(ctx context.Context, providerID string) (*CircuitBreakerState, error) { return nil, nil }
+func (r *sqliteProviderRepo) GetCircuitBreaker(ctx context.Context, providerID string) (*CircuitBreakerState, error) {
+	cb := &CircuitBreakerState{}
+	var lastFailure sql.NullTime
+	var openedAt sql.NullTime
+	err := r.db.QueryRowContext(ctx, `SELECT provider_id, state, failures, successes, last_failure_at, half_open_requests, opened_at, updated_at FROM circuit_breaker_states WHERE provider_id = ?`, providerID).
+		Scan(&cb.ProviderID, &cb.State, &cb.Failures, &cb.Successes, &lastFailure, &cb.HalfOpenRequests, &openedAt, &cb.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if lastFailure.Valid {
+		t := lastFailure.Time
+		cb.LastFailureAt = &t
+	}
+	if openedAt.Valid {
+		t := openedAt.Time
+		cb.OpenedAt = &t
+	}
+	return cb, nil
+}
 
 type sqliteControlRoomRepo struct{ db *sql.DB }
 
@@ -529,9 +681,15 @@ func (r *sqliteControlRoomRepo) Create(ctx context.Context, room *ControlRoom) e
 	_, err := r.db.ExecContext(ctx, query, room.ID, room.WorkspaceID, room.Slug, room.Name, room.Description, room.TagFilter, room.DashboardLayout, room.CreatedBy, room.CreatedAt, room.UpdatedAt)
 	return err
 }
-func (r *sqliteControlRoomRepo) GetByID(ctx context.Context, id string) (*ControlRoom, error) { return nil, nil }
-func (r *sqliteControlRoomRepo) GetBySlug(ctx context.Context, workspaceID, slug string) (*ControlRoom, error) { return nil, nil }
-func (r *sqliteControlRoomRepo) GetByWorkspace(ctx context.Context, workspaceID string) ([]ControlRoom, error) { return nil, nil }
+func (r *sqliteControlRoomRepo) GetByID(ctx context.Context, id string) (*ControlRoom, error) {
+	return nil, nil
+}
+func (r *sqliteControlRoomRepo) GetBySlug(ctx context.Context, workspaceID, slug string) (*ControlRoom, error) {
+	return nil, nil
+}
+func (r *sqliteControlRoomRepo) GetByWorkspace(ctx context.Context, workspaceID string) ([]ControlRoom, error) {
+	return nil, nil
+}
 func (r *sqliteControlRoomRepo) Update(ctx context.Context, room *ControlRoom) error { return nil }
 func (r *sqliteControlRoomRepo) Delete(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM control_rooms WHERE id = ?`, id)
@@ -547,27 +705,129 @@ func (r *sqliteControlRoomRepo) RevokeAccess(ctx context.Context, controlRoomID,
 	_, err := r.db.ExecContext(ctx, `DELETE FROM control_room_access WHERE control_room_id = ? AND user_id = ?`, controlRoomID, userID)
 	return err
 }
-func (r *sqliteControlRoomRepo) GetUserAccess(ctx context.Context, controlRoomID string) ([]ControlRoomAccess, error) { return nil, nil }
+func (r *sqliteControlRoomRepo) GetUserAccess(ctx context.Context, controlRoomID string) ([]ControlRoomAccess, error) {
+	return nil, nil
+}
 
 type sqliteAPIKeyRepo struct{ db *sql.DB }
 
 func (r *sqliteAPIKeyRepo) Create(ctx context.Context, key *APIKey) error {
+	allowedModelsJSON, err := json.Marshal(key.AllowedModels)
+	if err != nil {
+		return err
+	}
+	allowedAPIsJSON, err := json.Marshal(key.AllowedAPIs)
+	if err != nil {
+		return err
+	}
 	query := `INSERT INTO api_keys (id, workspace_id, name, key_hash, key_preview, status, created_by, expires_at, last_used_at, rate_limit, allowed_models, allowed_apis, metadata, created_at, updated_at)
 			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	_, err := r.db.ExecContext(ctx, query, key.ID, key.WorkspaceID, key.Name, key.KeyHash, key.KeyPreview, key.Status, key.CreatedBy, key.ExpiresAt, key.LastUsedAt, key.RateLimit, key.AllowedModels, key.AllowedAPIs, key.Metadata, key.CreatedAt, key.UpdatedAt)
+	_, err = r.db.ExecContext(ctx, query, key.ID, key.WorkspaceID, key.Name, key.KeyHash, key.KeyPreview, key.Status, key.CreatedBy, key.ExpiresAt, key.LastUsedAt, key.RateLimit, string(allowedModelsJSON), string(allowedAPIsJSON), key.Metadata, key.CreatedAt, key.UpdatedAt)
 	return err
 }
-func (r *sqliteAPIKeyRepo) GetByID(ctx context.Context, id string) (*APIKey, error) { return nil, nil }
-func (r *sqliteAPIKeyRepo) GetByHash(ctx context.Context, hash string) (*APIKey, error) { return nil, nil }
-func (r *sqliteAPIKeyRepo) GetByWorkspace(ctx context.Context, workspaceID string, limit, offset int) ([]APIKey, error) { return nil, nil }
-func (r *sqliteAPIKeyRepo) Update(ctx context.Context, key *APIKey) error { return nil }
+func (r *sqliteAPIKeyRepo) GetByID(ctx context.Context, id string) (*APIKey, error) {
+	return r.getOne(ctx, `SELECT id, workspace_id, name, key_hash, key_preview, status, created_by, expires_at, last_used_at, rate_limit, allowed_models, allowed_apis, metadata, created_at, updated_at FROM api_keys WHERE id = ?`, id)
+}
+
+func (r *sqliteAPIKeyRepo) GetByHash(ctx context.Context, hash string) (*APIKey, error) {
+	return r.getOne(ctx, `SELECT id, workspace_id, name, key_hash, key_preview, status, created_by, expires_at, last_used_at, rate_limit, allowed_models, allowed_apis, metadata, created_at, updated_at FROM api_keys WHERE key_hash = ?`, hash)
+}
+
+func (r *sqliteAPIKeyRepo) GetByWorkspace(ctx context.Context, workspaceID string, limit, offset int) ([]APIKey, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT id, workspace_id, name, key_hash, key_preview, status, created_by, expires_at, last_used_at, rate_limit, allowed_models, allowed_apis, metadata, created_at, updated_at FROM api_keys WHERE workspace_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`, workspaceID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]APIKey, 0)
+	for rows.Next() {
+		key, err := scanAPIKey(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *key)
+	}
+	return items, rows.Err()
+}
+
+func (r *sqliteAPIKeyRepo) Update(ctx context.Context, key *APIKey) error {
+	allowedModelsJSON, err := json.Marshal(key.AllowedModels)
+	if err != nil {
+		return err
+	}
+	allowedAPIsJSON, err := json.Marshal(key.AllowedAPIs)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, `UPDATE api_keys SET name = ?, key_hash = ?, key_preview = ?, status = ?, created_by = ?, expires_at = ?, last_used_at = ?, rate_limit = ?, allowed_models = ?, allowed_apis = ?, metadata = ?, updated_at = ? WHERE id = ?`, key.Name, key.KeyHash, key.KeyPreview, key.Status, key.CreatedBy, key.ExpiresAt, key.LastUsedAt, key.RateLimit, string(allowedModelsJSON), string(allowedAPIsJSON), key.Metadata, key.UpdatedAt, key.ID)
+	return err
+}
 func (r *sqliteAPIKeyRepo) Delete(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM api_keys WHERE id = ?`, id)
 	return err
 }
 func (r *sqliteAPIKeyRepo) UpdateLastUsed(ctx context.Context, id string, t time.Time) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at = ? WHERE id = ?`, t, id)
+	_, err := r.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at = ?, updated_at = ? WHERE id = ?`, t, t, id)
 	return err
+}
+
+func (r *sqliteAPIKeyRepo) getOne(ctx context.Context, query string, arg interface{}) (*APIKey, error) {
+	row := r.db.QueryRowContext(ctx, query, arg)
+	key, err := scanAPIKey(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return key, nil
+}
+
+func scanAPIKey(scanner interface {
+	Scan(dest ...interface{}) error
+}) (*APIKey, error) {
+	key := &APIKey{}
+	var createdBy sql.NullString
+	var expiresAt sql.NullTime
+	var lastUsedAt sql.NullTime
+	var rateLimit sql.NullInt64
+	var allowedModelsRaw sql.NullString
+	var allowedAPIsRaw sql.NullString
+	err := scanner.Scan(&key.ID, &key.WorkspaceID, &key.Name, &key.KeyHash, &key.KeyPreview, &key.Status, &createdBy, &expiresAt, &lastUsedAt, &rateLimit, &allowedModelsRaw, &allowedAPIsRaw, &key.Metadata, &key.CreatedAt, &key.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if createdBy.Valid {
+		key.CreatedBy = &createdBy.String
+	}
+	if expiresAt.Valid {
+		t := expiresAt.Time
+		key.ExpiresAt = &t
+	}
+	if lastUsedAt.Valid {
+		t := lastUsedAt.Time
+		key.LastUsedAt = &t
+	}
+	if rateLimit.Valid {
+		v := int(rateLimit.Int64)
+		key.RateLimit = &v
+	}
+	if allowedModelsRaw.Valid && allowedModelsRaw.String != "" {
+		_ = json.Unmarshal([]byte(allowedModelsRaw.String), &key.AllowedModels)
+	}
+	if allowedAPIsRaw.Valid && allowedAPIsRaw.String != "" {
+		_ = json.Unmarshal([]byte(allowedAPIsRaw.String), &key.AllowedAPIs)
+	}
+	if key.AllowedModels == nil {
+		key.AllowedModels = []string{}
+	}
+	if key.AllowedAPIs == nil {
+		key.AllowedAPIs = []string{}
+	}
+	return key, nil
 }
 
 type sqliteQuotaRepo struct{ db *sql.DB }
@@ -579,7 +839,9 @@ func (r *sqliteQuotaRepo) Create(ctx context.Context, quota *Quota) error {
 	return err
 }
 func (r *sqliteQuotaRepo) GetByID(ctx context.Context, id string) (*Quota, error) { return nil, nil }
-func (r *sqliteQuotaRepo) GetByWorkspace(ctx context.Context, workspaceID string) ([]Quota, error) { return nil, nil }
+func (r *sqliteQuotaRepo) GetByWorkspace(ctx context.Context, workspaceID string) ([]Quota, error) {
+	return nil, nil
+}
 func (r *sqliteQuotaRepo) Update(ctx context.Context, quota *Quota) error { return nil }
 func (r *sqliteQuotaRepo) Delete(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM quotas WHERE id = ?`, id)
@@ -591,7 +853,9 @@ func (r *sqliteQuotaRepo) AssignQuota(ctx context.Context, assignment *QuotaAssi
 	_, err := r.db.ExecContext(ctx, query, assignment.QuotaID, assignment.ResourceType, assignment.ResourceID, assignment.CurrentUsage, assignment.PeriodStart, assignment.PeriodEnd, assignment.WarningSent, assignment.ExceededAt, assignment.UpdatedAt)
 	return err
 }
-func (r *sqliteQuotaRepo) GetAssignment(ctx context.Context, quotaID, resourceType, resourceID string) (*QuotaAssignment, error) { return nil, nil }
+func (r *sqliteQuotaRepo) GetAssignment(ctx context.Context, quotaID, resourceType, resourceID string) (*QuotaAssignment, error) {
+	return nil, nil
+}
 func (r *sqliteQuotaRepo) UpdateUsage(ctx context.Context, quotaID, resourceType, resourceID string, usage int64) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE quota_assignments SET current_usage = ? WHERE quota_id = ? AND resource_type = ? AND resource_id = ?`, usage, quotaID, resourceType, resourceID)
 	return err
@@ -600,7 +864,9 @@ func (r *sqliteQuotaRepo) ResetUsage(ctx context.Context, quotaID, resourceType,
 	_, err := r.db.ExecContext(ctx, `UPDATE quota_assignments SET current_usage = 0 WHERE quota_id = ? AND resource_type = ? AND resource_id = ?`, quotaID, resourceType, resourceID)
 	return err
 }
-func (r *sqliteQuotaRepo) GetResourceAssignments(ctx context.Context, resourceType, resourceID string) ([]QuotaAssignment, error) { return nil, nil }
+func (r *sqliteQuotaRepo) GetResourceAssignments(ctx context.Context, resourceType, resourceID string) ([]QuotaAssignment, error) {
+	return nil, nil
+}
 
 type sqliteUsageRecordRepo struct{ db *sql.DB }
 
@@ -610,12 +876,128 @@ func (r *sqliteUsageRecordRepo) Create(ctx context.Context, record *UsageRecord)
 	_, err := r.db.ExecContext(ctx, query, record.ID, record.WorkspaceID, record.RequestID, record.TraceID, record.APIKeyID, record.ControlRoomID, record.IncomingAPI, record.IncomingModel, record.SelectedModel, record.ProviderID, record.PromptTokens, record.CompletionTokens, record.TotalTokens, record.CostUSD, record.DurationMs, record.ResponseStatus, record.ErrorCode, record.ErrorMessage, record.Attempts, record.RouteLog, record.StartedAt, record.CompletedAt, record.CreatedAt)
 	return err
 }
-func (r *sqliteUsageRecordRepo) GetByID(ctx context.Context, id string) (*UsageRecord, error) { return nil, nil }
-func (r *sqliteUsageRecordRepo) GetByRequestID(ctx context.Context, requestID string) (*UsageRecord, error) { return nil, nil }
-func (r *sqliteUsageRecordRepo) GetByWorkspace(ctx context.Context, workspaceID string, start, end time.Time, limit, offset int) ([]UsageRecord, error) { return nil, nil }
-func (r *sqliteUsageRecordRepo) GetByAPIKey(ctx context.Context, apiKeyID string, start, end time.Time, limit, offset int) ([]UsageRecord, error) { return nil, nil }
-func (r *sqliteUsageRecordRepo) Update(ctx context.Context, record *UsageRecord) error { return nil }
-func (r *sqliteUsageRecordRepo) GetSummaryByWorkspace(ctx context.Context, workspaceID string, start, end time.Time) (*UsageSummary, error) { return nil, nil }
+func (r *sqliteUsageRecordRepo) GetByID(ctx context.Context, id string) (*UsageRecord, error) {
+	return r.getOne(ctx, `SELECT id, workspace_id, request_id, trace_id, api_key_id, control_room_id, incoming_api, incoming_model, selected_model, provider_id, prompt_tokens, completion_tokens, total_tokens, cost_usd, duration_ms, response_status, error_code, error_message, attempts, route_log, started_at, completed_at, created_at FROM usage_records WHERE id = ?`, id)
+}
+
+func (r *sqliteUsageRecordRepo) GetByRequestID(ctx context.Context, requestID string) (*UsageRecord, error) {
+	return r.getOne(ctx, `SELECT id, workspace_id, request_id, trace_id, api_key_id, control_room_id, incoming_api, incoming_model, selected_model, provider_id, prompt_tokens, completion_tokens, total_tokens, cost_usd, duration_ms, response_status, error_code, error_message, attempts, route_log, started_at, completed_at, created_at FROM usage_records WHERE request_id = ?`, requestID)
+}
+
+func (r *sqliteUsageRecordRepo) GetByWorkspace(ctx context.Context, workspaceID string, start, end time.Time, limit, offset int) ([]UsageRecord, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT id, workspace_id, request_id, trace_id, api_key_id, control_room_id, incoming_api, incoming_model, selected_model, provider_id, prompt_tokens, completion_tokens, total_tokens, cost_usd, duration_ms, response_status, error_code, error_message, attempts, route_log, started_at, completed_at, created_at FROM usage_records WHERE workspace_id = ? AND created_at >= ? AND created_at <= ? ORDER BY created_at DESC LIMIT ? OFFSET ?`, workspaceID, start, end, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]UsageRecord, 0)
+	for rows.Next() {
+		rec, err := scanUsageRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *rec)
+	}
+	return items, rows.Err()
+}
+
+func (r *sqliteUsageRecordRepo) GetByAPIKey(ctx context.Context, apiKeyID string, start, end time.Time, limit, offset int) ([]UsageRecord, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT id, workspace_id, request_id, trace_id, api_key_id, control_room_id, incoming_api, incoming_model, selected_model, provider_id, prompt_tokens, completion_tokens, total_tokens, cost_usd, duration_ms, response_status, error_code, error_message, attempts, route_log, started_at, completed_at, created_at FROM usage_records WHERE api_key_id = ? AND created_at >= ? AND created_at <= ? ORDER BY created_at DESC LIMIT ? OFFSET ?`, apiKeyID, start, end, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]UsageRecord, 0)
+	for rows.Next() {
+		rec, err := scanUsageRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *rec)
+	}
+	return items, rows.Err()
+}
+
+func (r *sqliteUsageRecordRepo) Update(ctx context.Context, record *UsageRecord) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE usage_records SET selected_model = ?, provider_id = ?, prompt_tokens = ?, completion_tokens = ?, total_tokens = ?, cost_usd = ?, duration_ms = ?, response_status = ?, error_code = ?, error_message = ?, attempts = ?, route_log = ?, completed_at = ? WHERE id = ?`, record.SelectedModel, record.ProviderID, record.PromptTokens, record.CompletionTokens, record.TotalTokens, record.CostUSD, record.DurationMs, record.ResponseStatus, record.ErrorCode, record.ErrorMessage, record.Attempts, record.RouteLog, record.CompletedAt, record.ID)
+	return err
+}
+
+func (r *sqliteUsageRecordRepo) GetSummaryByWorkspace(ctx context.Context, workspaceID string, start, end time.Time) (*UsageSummary, error) {
+	summary := &UsageSummary{}
+	var avgDuration sql.NullFloat64
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(total_tokens), 0), COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0), COALESCE(SUM(cost_usd), 0), AVG(duration_ms), COALESCE(SUM(CASE WHEN response_status = 'success' THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN response_status != 'success' THEN 1 ELSE 0 END), 0) FROM usage_records WHERE workspace_id = ? AND created_at >= ? AND created_at <= ?`, workspaceID, start, end).
+		Scan(&summary.TotalRequests, &summary.TotalTokens, &summary.TotalPromptTokens, &summary.TotalCompletionTokens, &summary.TotalCostUSD, &avgDuration, &summary.SuccessCount, &summary.ErrorCount)
+	if err != nil {
+		return nil, err
+	}
+	if avgDuration.Valid {
+		summary.AvgDurationMs = int(avgDuration.Float64)
+	}
+	return summary, nil
+}
+
+func (r *sqliteUsageRecordRepo) getOne(ctx context.Context, query string, arg interface{}) (*UsageRecord, error) {
+	rec, err := scanUsageRecord(r.db.QueryRowContext(ctx, query, arg))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return rec, nil
+}
+
+func scanUsageRecord(scanner interface {
+	Scan(dest ...interface{}) error
+}) (*UsageRecord, error) {
+	rec := &UsageRecord{}
+	var apiKeyID sql.NullString
+	var controlRoomID sql.NullString
+	var selectedModel sql.NullString
+	var providerID sql.NullString
+	var cost sql.NullFloat64
+	var errorCode sql.NullString
+	var errorMessage sql.NullString
+	var completedAt sql.NullTime
+	err := scanner.Scan(&rec.ID, &rec.WorkspaceID, &rec.RequestID, &rec.TraceID, &apiKeyID, &controlRoomID, &rec.IncomingAPI, &rec.IncomingModel, &selectedModel, &providerID, &rec.PromptTokens, &rec.CompletionTokens, &rec.TotalTokens, &cost, &rec.DurationMs, &rec.ResponseStatus, &errorCode, &errorMessage, &rec.Attempts, &rec.RouteLog, &rec.StartedAt, &completedAt, &rec.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if apiKeyID.Valid {
+		rec.APIKeyID = &apiKeyID.String
+	}
+	if controlRoomID.Valid {
+		rec.ControlRoomID = &controlRoomID.String
+	}
+	if selectedModel.Valid {
+		rec.SelectedModel = &selectedModel.String
+	}
+	if providerID.Valid {
+		rec.ProviderID = &providerID.String
+	}
+	if cost.Valid {
+		v := cost.Float64
+		rec.CostUSD = &v
+	}
+	if errorCode.Valid {
+		rec.ErrorCode = &errorCode.String
+	}
+	if errorMessage.Valid {
+		rec.ErrorMessage = &errorMessage.String
+	}
+	if completedAt.Valid {
+		t := completedAt.Time
+		rec.CompletedAt = &t
+	}
+	return rec, nil
+}
 
 type sqliteTraceEventRepo struct{ db *sql.DB }
 
@@ -625,8 +1007,12 @@ func (r *sqliteTraceEventRepo) Create(ctx context.Context, event *TraceEvent) er
 	_, err := r.db.ExecContext(ctx, query, event.ID, event.TraceID, event.RequestID, event.EventType, event.EventOrder, event.ProviderID, event.APIKeyID, event.Message, event.Metadata, event.Timestamp, event.DurationMs, event.CreatedAt)
 	return err
 }
-func (r *sqliteTraceEventRepo) GetByTraceID(ctx context.Context, traceID string) ([]TraceEvent, error) { return nil, nil }
-func (r *sqliteTraceEventRepo) GetByRequestID(ctx context.Context, requestID string) ([]TraceEvent, error) { return nil, nil }
+func (r *sqliteTraceEventRepo) GetByTraceID(ctx context.Context, traceID string) ([]TraceEvent, error) {
+	return nil, nil
+}
+func (r *sqliteTraceEventRepo) GetByRequestID(ctx context.Context, requestID string) ([]TraceEvent, error) {
+	return nil, nil
+}
 func (r *sqliteTraceEventRepo) CreateBatch(ctx context.Context, events []TraceEvent) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {

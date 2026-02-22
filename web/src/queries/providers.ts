@@ -25,6 +25,21 @@ export interface ProviderListResponse {
   providers: Provider[];
 }
 
+interface BackendProvider {
+  id: string;
+  name: string;
+  providerType?: string;
+  status?: string;
+  baseUrl?: string;
+  health?: { healthy?: boolean; latencyMs?: number };
+  circuitState?: { state?: string };
+}
+
+interface BackendProviderListResponse {
+  data?: BackendProvider[];
+  providers?: BackendProvider[];
+}
+
 export interface ProviderStatusUpdate {
   status: 'healthy' | 'degraded' | 'unhealthy' | 'disabled';
   circuitBreaker?: 'closed' | 'open' | 'half-open';
@@ -35,7 +50,37 @@ export interface ProviderStatusUpdate {
 // ============================================================================
 
 const fetchProviders = async (): Promise<ProviderListResponse> => {
-  return apiClient.get<ProviderListResponse>('/v0/admin/providers');
+  const raw = await apiClient.get<BackendProviderListResponse>('/v0/admin/providers');
+  const list = raw.data || raw.providers || [];
+  return {
+    providers: list.map((p) => {
+      const providerType = p.providerType || 'other';
+      const status = p.status || 'healthy';
+      const mappedStatus: Provider['status'] =
+        status === 'active' ? 'healthy' :
+        status === 'inactive' ? 'disabled' :
+        status === 'degraded' ? 'degraded' :
+        status === 'unhealthy' ? 'unhealthy' :
+        status === 'disabled' ? 'disabled' :
+        'healthy';
+      const circuitState: Provider['circuitBreaker'] =
+        (p.circuitState?.state as Provider['circuitBreaker']) || 'closed';
+
+      return {
+        id: p.id,
+        name: p.name,
+        displayName: p.name,
+        status: mappedStatus,
+        circuitBreaker: circuitState,
+        requestCount24h: 0,
+        errorRate24h: 0,
+        models: [providerType],
+        ...(typeof p.health?.latencyMs === 'number'
+          ? { latencyMs: p.health.latencyMs }
+          : {}),
+      };
+    }),
+  };
 };
 
 const fetchProvider = async (name: string): Promise<Provider> => {

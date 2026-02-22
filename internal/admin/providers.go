@@ -1,6 +1,8 @@
 package admin
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -8,15 +10,15 @@ import (
 
 	"log/slog"
 
+	"radgateway/internal/db"
 	"radgateway/internal/logger"
 )
 
-// ProviderCreateRequest represents a request to create a provider
 type ProviderCreateRequest struct {
 	Name         string                 `json:"name"`
 	Slug         string                 `json:"slug"`
 	WorkspaceID  string                 `json:"workspaceId"`
-	ProviderType string                 `json:"providerType"` // openai, anthropic, gemini
+	ProviderType string                 `json:"providerType"`
 	BaseURL      string                 `json:"baseUrl"`
 	APIKey       string                 `json:"apiKey"`
 	Config       map[string]interface{} `json:"config,omitempty"`
@@ -24,56 +26,33 @@ type ProviderCreateRequest struct {
 	Weight       int                    `json:"weight"`
 }
 
-// ProviderUpdateRequest represents a request to update a provider
 type ProviderUpdateRequest struct {
-	Name         string                 `json:"name,omitempty"`
-	BaseURL      string                 `json:"baseUrl,omitempty"`
-	APIKey       string                 `json:"apiKey,omitempty"`
-	Config       map[string]interface{} `json:"config,omitempty"`
-	Status       string                 `json:"status,omitempty"`
-	Priority     *int                   `json:"priority,omitempty"`
-	Weight       *int                   `json:"weight,omitempty"`
+	Name     string                 `json:"name,omitempty"`
+	BaseURL  string                 `json:"baseUrl,omitempty"`
+	APIKey   string                 `json:"apiKey,omitempty"`
+	Config   map[string]interface{} `json:"config,omitempty"`
+	Status   string                 `json:"status,omitempty"`
+	Priority *int                   `json:"priority,omitempty"`
+	Weight   *int                   `json:"weight,omitempty"`
 }
 
-// ProviderResponse represents a provider in API responses
 type ProviderResponse struct {
-	ID           string                 `json:"id"`
-	WorkspaceID  string                 `json:"workspaceId"`
-	Slug         string                 `json:"slug"`
-	Name         string                 `json:"name"`
-	ProviderType string                 `json:"providerType"`
-	BaseURL      string                 `json:"baseUrl"`
-	Config       map[string]interface{} `json:"config"`
-	Status       string                 `json:"status"`
-	Priority     int                    `json:"priority"`
-	Weight       int                    `json:"weight"`
-	Health       *ProviderHealthStatus  `json:"health,omitempty"`
-	CircuitState *CircuitBreakerState   `json:"circuitState,omitempty"`
-	CreatedAt    time.Time              `json:"createdAt"`
-	UpdatedAt    time.Time              `json:"updatedAt"`
+	ID           string                  `json:"id"`
+	WorkspaceID  string                  `json:"workspaceId"`
+	Slug         string                  `json:"slug"`
+	Name         string                  `json:"name"`
+	ProviderType string                  `json:"providerType"`
+	BaseURL      string                  `json:"baseUrl"`
+	Config       map[string]any          `json:"config"`
+	Status       string                  `json:"status"`
+	Priority     int                     `json:"priority"`
+	Weight       int                     `json:"weight"`
+	Health       *db.ProviderHealth      `json:"health,omitempty"`
+	CircuitState *db.CircuitBreakerState `json:"circuitState,omitempty"`
+	CreatedAt    time.Time               `json:"createdAt"`
+	UpdatedAt    time.Time               `json:"updatedAt"`
 }
 
-// ProviderHealthStatus represents provider health status
-type ProviderHealthStatus struct {
-	Healthy             bool       `json:"healthy"`
-	LastCheckAt         time.Time  `json:"lastCheckAt"`
-	LastSuccessAt       *time.Time `json:"lastSuccessAt,omitempty"`
-	ConsecutiveFailures int        `json:"consecutiveFailures"`
-	LatencyMs           *int       `json:"latencyMs,omitempty"`
-	ErrorMessage        *string    `json:"errorMessage,omitempty"`
-}
-
-// CircuitBreakerState represents circuit breaker state
-type CircuitBreakerState struct {
-	State            string     `json:"state"` // closed, open, half-open
-	Failures         int        `json:"failures"`
-	Successes        int        `json:"successes"`
-	LastFailureAt    *time.Time `json:"lastFailureAt,omitempty"`
-	HalfOpenRequests int        `json:"halfOpenRequests"`
-	OpenedAt         *time.Time `json:"openedAt,omitempty"`
-}
-
-// ProviderListResponse represents the list response
 type ProviderListResponse struct {
 	Data     []ProviderResponse `json:"data"`
 	Total    int                `json:"total"`
@@ -82,94 +61,69 @@ type ProviderListResponse struct {
 	HasMore  bool               `json:"hasMore"`
 }
 
-// ProviderHealthCheckRequest represents a request to trigger health check
 type ProviderHealthCheckRequest struct {
 	ProviderID string `json:"providerId"`
 }
 
-// ProviderHealthCheckResponse represents health check response
-type ProviderHealthCheckResponse struct {
-	ProviderID string            `json:"providerId"`
-	Healthy    bool              `json:"healthy"`
-	LatencyMs  int               `json:"latencyMs"`
-	CheckedAt  time.Time         `json:"checkedAt"`
-	Details    map[string]string `json:"details,omitempty"`
-}
-
-// CircuitBreakerControlRequest represents a request to control circuit breaker
 type CircuitBreakerControlRequest struct {
-	Action string `json:"action"` // open, close, reset
+	Action string `json:"action"`
 }
 
-// CircuitBreakerControlResponse represents circuit breaker control response
-type CircuitBreakerControlResponse struct {
-	ProviderID string              `json:"providerId"`
-	Action     string              `json:"action"`
-	NewState   string              `json:"newState"`
-	AppliedAt  time.Time           `json:"appliedAt"`
-}
-
-// BulkProviderRequest represents a bulk operation request
 type BulkProviderRequest struct {
 	IDs    []string `json:"ids"`
 	Action string   `json:"action"`
 }
 
-// ProviderMetricsResponse represents provider metrics
-type ProviderMetricsResponse struct {
-	ProviderID    string    `json:"providerId"`
-	ProviderName  string    `json:"providerName"`
-	TimeRange     TimeRange `json:"timeRange"`
-	RequestCount  int64     `json:"requestCount"`
-	SuccessCount  int64     `json:"successCount"`
-	ErrorCount    int64     `json:"errorCount"`
-	ErrorRate     float64   `json:"errorRate"`
-	AvgLatencyMs  float64   `json:"avgLatencyMs"`
-	TotalTokens   int64     `json:"totalTokens"`
-	TotalCostUSD  float64   `json:"totalCostUsd"`
-	P50LatencyMs  float64   `json:"p50LatencyMs"`
-	P95LatencyMs  float64   `json:"p95LatencyMs"`
-	P99LatencyMs  float64   `json:"p99LatencyMs"`
-}
-
-// ProviderHandler handles provider management endpoints
 type ProviderHandler struct {
 	log *slog.Logger
+	db  db.Database
 }
 
-// NewProviderHandler creates a new provider handler
-func NewProviderHandler() *ProviderHandler {
-	return &ProviderHandler{
-		log: logger.WithComponent("admin.providers"),
-	}
+func NewProviderHandler(database db.Database) *ProviderHandler {
+	return &ProviderHandler{log: logger.WithComponent("admin.providers"), db: database}
 }
 
-// RegisterRoutes registers the provider management routes
 func (h *ProviderHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/v0/admin/providers", h.handleProviders)
 	mux.HandleFunc("/v0/admin/providers/", h.handleProviderDetail)
 	mux.HandleFunc("/v0/admin/providers/bulk", h.handleBulkOperation)
 	mux.HandleFunc("/v0/admin/providers/health", h.handleHealthCheck)
 	mux.HandleFunc("/v0/admin/providers/circuit", h.handleCircuitControl)
-	mux.HandleFunc("/v0/admin/providers/metrics", h.handleProviderMetrics)
 }
 
 func (h *ProviderHandler) handleProviders(w http.ResponseWriter, r *http.Request) {
+	if h.db == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "database not configured"})
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		h.listProviders(w, r)
 	case http.MethodPost:
 		h.createProvider(w, r)
 	default:
-		h.log.Warn("method not allowed", "path", r.URL.Path, "method", r.Method)
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
 }
 
 func (h *ProviderHandler) handleProviderDetail(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/v0/admin/providers/")
-	if id == "" || id == "bulk" || id == "health" || id == "circuit" || id == "metrics" {
+	if h.db == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "database not configured"})
 		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/v0/admin/providers/")
+	if path == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provider id required"})
+		return
+	}
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	id := parts[0]
+	if len(parts) > 1 {
+		switch parts[1] {
+		case "test", "health":
+			h.triggerHealthCheckByID(w, r, id)
+			return
+		}
 	}
 
 	switch r.Method {
@@ -177,12 +131,11 @@ func (h *ProviderHandler) handleProviderDetail(w http.ResponseWriter, r *http.Re
 		h.getProvider(w, r, id)
 	case http.MethodPut:
 		h.updateProvider(w, r, id)
-	case http.MethodDelete:
-		h.deleteProvider(w, r, id)
 	case http.MethodPatch:
 		h.patchProvider(w, r, id)
+	case http.MethodDelete:
+		h.deleteProvider(w, r, id)
 	default:
-		h.log.Warn("method not allowed", "path", r.URL.Path, "method", r.Method)
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
 }
@@ -192,559 +145,305 @@ func (h *ProviderHandler) handleBulkOperation(w http.ResponseWriter, r *http.Req
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-	h.handleBulkProvider(w, r)
+	var req BulkProviderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	processed := 0
+	for _, id := range req.IDs {
+		switch req.Action {
+		case "delete":
+			if err := h.db.Providers().Delete(r.Context(), id); err == nil {
+				processed++
+			}
+		case "activate", "deactivate":
+			p, err := h.db.Providers().GetByID(r.Context(), id)
+			if err != nil || p == nil {
+				continue
+			}
+			if req.Action == "activate" {
+				p.Status = "active"
+			} else {
+				p.Status = "inactive"
+			}
+			p.UpdatedAt = time.Now().UTC()
+			if err := h.db.Providers().Update(r.Context(), p); err == nil {
+				processed++
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"processed": processed, "action": req.Action, "success": true})
 }
 
 func (h *ProviderHandler) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodPost:
-		h.triggerHealthCheck(w, r)
-	case http.MethodGet:
-		h.getProviderHealth(w, r)
-	default:
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	if r.Method == http.MethodPost {
+		var req ProviderHealthCheckRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ProviderID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "providerId is required"})
+			return
+		}
+		h.triggerHealthCheckByID(w, r, req.ProviderID)
+		return
 	}
+	writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 }
 
 func (h *ProviderHandler) handleCircuitControl(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodPost:
-		h.controlCircuitBreaker(w, r)
-	case http.MethodGet:
-		h.getCircuitBreakerState(w, r)
-	default:
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-	}
-}
-
-func (h *ProviderHandler) handleProviderMetrics(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-	h.getProviderMetrics(w, r)
-}
-
-// listProviders returns a paginated list of providers
-func (h *ProviderHandler) listProviders(w http.ResponseWriter, r *http.Request) {
-	workspaceID := r.URL.Query().Get("workspaceId")
-	providerType := r.URL.Query().Get("providerType")
-	status := r.URL.Query().Get("status")
-	page := readIntParam(r, "page", 1)
-	pageSize := readIntParam(r, "pageSize", 50)
-
-	h.log.Debug("listing providers",
-		"workspace", workspaceID,
-		"type", providerType,
-		"status", status,
-	)
-
-	// Mock providers
-	lastSuccess := time.Now().Add(-5 * time.Minute)
-	latency := 150
-	errorMsg := "Connection timeout"
-
-	providers := []ProviderResponse{
-		{
-			ID:           "prov_001",
-			WorkspaceID:  "ws_001",
-			Slug:         "openai-production",
-			Name:         "OpenAI Production",
-			ProviderType: "openai",
-			BaseURL:      "https://api.openai.com",
-			Config:       map[string]interface{}{"timeout": 30},
-			Status:       "active",
-			Priority:     1,
-			Weight:       100,
-			Health: &ProviderHealthStatus{
-				Healthy:             true,
-				LastCheckAt:         time.Now(),
-				LastSuccessAt:       &lastSuccess,
-				ConsecutiveFailures: 0,
-				LatencyMs:           &latency,
-			},
-			CircuitState: &CircuitBreakerState{
-				State:     "closed",
-				Failures:  0,
-				Successes: 1523,
-			},
-			CreatedAt: time.Now().Add(-30 * 24 * time.Hour),
-			UpdatedAt: time.Now(),
-		},
-		{
-			ID:           "prov_002",
-			WorkspaceID:  "ws_001",
-			Slug:         "anthropic-production",
-			Name:         "Anthropic Production",
-			ProviderType: "anthropic",
-			BaseURL:      "https://api.anthropic.com",
-			Config:       map[string]interface{}{"timeout": 30},
-			Status:       "active",
-			Priority:     2,
-			Weight:       80,
-			Health: &ProviderHealthStatus{
-				Healthy:             false,
-				LastCheckAt:         time.Now(),
-				ConsecutiveFailures: 3,
-				LatencyMs:           nil,
-				ErrorMessage:        &errorMsg,
-			},
-			CircuitState: &CircuitBreakerState{
-				State:       "open",
-				Failures:    5,
-				Successes:   890,
-				OpenedAt:    timePtr(time.Now().Add(-10 * time.Minute)),
-				LastFailureAt: timePtr(time.Now()),
-			},
-			CreatedAt: time.Now().Add(-30 * 24 * time.Hour),
-			UpdatedAt: time.Now(),
-		},
-		{
-			ID:           "prov_003",
-			WorkspaceID:  "ws_001",
-			Slug:         "gemini-production",
-			Name:         "Google Gemini Production",
-			ProviderType: "gemini",
-			BaseURL:      "https://generativelanguage.googleapis.com",
-			Config:       map[string]interface{}{"timeout": 30},
-			Status:       "active",
-			Priority:     3,
-			Weight:       60,
-			Health: &ProviderHealthStatus{
-				Healthy:             true,
-				LastCheckAt:         time.Now(),
-				LastSuccessAt:       timePtr(time.Now().Add(-2 * time.Minute)),
-				ConsecutiveFailures: 0,
-				LatencyMs:           intPtr(120),
-			},
-			CircuitState: &CircuitBreakerState{
-				State:     "closed",
-				Failures:  0,
-				Successes: 2341,
-			},
-			CreatedAt: time.Now().Add(-20 * 24 * time.Hour),
-			UpdatedAt: time.Now(),
-		},
-	}
-
-	// Apply filters
-	var filtered []ProviderResponse
-	for _, p := range providers {
-		if workspaceID != "" && p.WorkspaceID != workspaceID {
-			continue
-		}
-		if providerType != "" && p.ProviderType != providerType {
-			continue
-		}
-		if status != "" && p.Status != status {
-			continue
-		}
-		filtered = append(filtered, p)
-	}
-
-	total := len(filtered)
-	start := (page - 1) * pageSize
-	end := start + pageSize
-	if start > total {
-		start = total
-	}
-	if end > total {
-		end = total
-	}
-
-	response := ProviderListResponse{
-		Data:     filtered[start:end],
-		Total:    total,
-		Page:     page,
-		PageSize: pageSize,
-		HasMore:  end < total,
-	}
-
-	writeJSON(w, http.StatusOK, response)
-}
-
-// getProvider returns a single provider
-func (h *ProviderHandler) getProvider(w http.ResponseWriter, r *http.Request, id string) {
-	h.log.Debug("getting provider", "id", id)
-
-	lastSuccess := time.Now().Add(-5 * time.Minute)
-	latency := 150
-
-	provider := ProviderResponse{
-		ID:           id,
-		WorkspaceID:  "ws_001",
-		Slug:         "openai-production",
-		Name:         "OpenAI Production",
-		ProviderType: "openai",
-		BaseURL:      "https://api.openai.com",
-		Config:       map[string]interface{}{"timeout": 30},
-		Status:       "active",
-		Priority:     1,
-		Weight:       100,
-		Health: &ProviderHealthStatus{
-			Healthy:             true,
-			LastCheckAt:         time.Now(),
-			LastSuccessAt:       &lastSuccess,
-			ConsecutiveFailures: 0,
-			LatencyMs:           &latency,
-		},
-		CircuitState: &CircuitBreakerState{
-			State:     "closed",
-			Failures:  0,
-			Successes: 1523,
-		},
-		CreatedAt: time.Now().Add(-30 * 24 * time.Hour),
-		UpdatedAt: time.Now(),
-	}
-
-	writeJSON(w, http.StatusOK, provider)
-}
-
-// createProvider creates a new provider
-func (h *ProviderHandler) createProvider(w http.ResponseWriter, r *http.Request) {
-	var req ProviderCreateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.Warn("invalid request body", "error", err.Error())
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-		return
-	}
-
-	if req.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
-		return
-	}
-	if req.ProviderType == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "providerType is required"})
-		return
-	}
-	if req.BaseURL == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "baseUrl is required"})
-		return
-	}
-	if req.APIKey == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "apiKey is required"})
-		return
-	}
-
-	if req.Slug == "" {
-		req.Slug = slugify(req.Name)
-	}
-
-	h.log.Info("creating provider",
-		"name", req.Name,
-		"type", req.ProviderType,
-		"baseUrl", req.BaseURL,
-	)
-
-	// Store API key securely (mock)
-	_ = req.APIKey
-
-	provider := ProviderResponse{
-		ID:           generateID("prov"),
-		WorkspaceID:  req.WorkspaceID,
-		Slug:         req.Slug,
-		Name:         req.Name,
-		ProviderType: req.ProviderType,
-		BaseURL:      req.BaseURL,
-		Config:       req.Config,
-		Status:       "active",
-		Priority:     req.Priority,
-		Weight:       req.Weight,
-		Health: &ProviderHealthStatus{
-			Healthy:     true,
-			LastCheckAt: time.Now(),
-		},
-		CircuitState: &CircuitBreakerState{
-			State:     "closed",
-			Failures:  0,
-			Successes: 0,
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-
-	writeJSON(w, http.StatusCreated, provider)
-}
-
-// updateProvider fully updates a provider
-func (h *ProviderHandler) updateProvider(w http.ResponseWriter, r *http.Request, id string) {
-	var req ProviderUpdateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.Warn("invalid request body", "error", err.Error())
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-		return
-	}
-
-	h.log.Info("updating provider", "id", id)
-
-	provider := ProviderResponse{
-		ID:           id,
-		WorkspaceID:  "ws_001",
-		Slug:         "openai-production",
-		Name:         req.Name,
-		ProviderType: "openai",
-		BaseURL:      req.BaseURL,
-		Config:       req.Config,
-		Status:       req.Status,
-		UpdatedAt:    time.Now(),
-	}
-
-	if req.Priority != nil {
-		provider.Priority = *req.Priority
-	}
-	if req.Weight != nil {
-		provider.Weight = *req.Weight
-	}
-
-	writeJSON(w, http.StatusOK, provider)
-}
-
-// patchProvider partially updates a provider
-func (h *ProviderHandler) patchProvider(w http.ResponseWriter, r *http.Request, id string) {
-	var updates map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
-		h.log.Warn("invalid request body", "error", err.Error())
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-		return
-	}
-
-	h.log.Info("patching provider", "id", id, "fields", len(updates))
-
-	latency := 150
-	provider := ProviderResponse{
-		ID:           id,
-		WorkspaceID:  "ws_001",
-		Slug:         "openai-production",
-		Name:         "OpenAI Production",
-		ProviderType: "openai",
-		BaseURL:      "https://api.openai.com",
-		Config:       map[string]interface{}{"timeout": 30},
-		Status:       "active",
-		Priority:     1,
-		Weight:       100,
-		Health: &ProviderHealthStatus{
-			Healthy:             true,
-			LastCheckAt:         time.Now(),
-			LastSuccessAt:       timePtr(time.Now().Add(-5 * time.Minute)),
-			ConsecutiveFailures: 0,
-			LatencyMs:           &latency,
-		},
-		UpdatedAt: time.Now(),
-	}
-
-	writeJSON(w, http.StatusOK, provider)
-}
-
-// deleteProvider deletes a provider
-func (h *ProviderHandler) deleteProvider(w http.ResponseWriter, r *http.Request, id string) {
-	h.log.Info("deleting provider", "id", id)
-	writeJSON(w, http.StatusNoContent, nil)
-}
-
-// handleBulkProvider handles bulk provider operations
-func (h *ProviderHandler) handleBulkProvider(w http.ResponseWriter, r *http.Request) {
-	var req BulkProviderRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.Warn("invalid request body", "error", err.Error())
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-		return
-	}
-
-	if len(req.IDs) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ids array is required"})
-		return
-	}
-
-	if req.Action == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action is required"})
-		return
-	}
-
-	h.log.Info("bulk provider operation",
-		"action", req.Action,
-		"count", len(req.IDs),
-	)
-
-	validActions := map[string]bool{
-		"activate":   true,
-		"deactivate": true,
-		"delete":     true,
-		"health_check": true,
-	}
-	if !validActions[req.Action] {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid action"})
-		return
-	}
-
-	result := map[string]interface{}{
-		"processed": len(req.IDs),
-		"action":    req.Action,
-		"success":   true,
-	}
-
-	writeJSON(w, http.StatusOK, result)
-}
-
-// triggerHealthCheck triggers a health check for a provider
-func (h *ProviderHandler) triggerHealthCheck(w http.ResponseWriter, r *http.Request) {
-	var req ProviderHealthCheckRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.Warn("invalid request body", "error", err.Error())
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-		return
-	}
-
-	if req.ProviderID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "providerId is required"})
-		return
-	}
-
-	h.log.Info("triggering health check", "providerId", req.ProviderID)
-
-	// Mock health check
-	response := ProviderHealthCheckResponse{
-		ProviderID: req.ProviderID,
-		Healthy:    true,
-		LatencyMs:  145,
-		CheckedAt:  time.Now(),
-		Details: map[string]string{
-			"api_version": "v1",
-			"models_available": "3",
-		},
-	}
-
-	writeJSON(w, http.StatusOK, response)
-}
-
-// getProviderHealth returns health status for all providers
-func (h *ProviderHandler) getProviderHealth(w http.ResponseWriter, r *http.Request) {
-	workspaceID := r.URL.Query().Get("workspaceId")
-
-	h.log.Debug("getting provider health", "workspace", workspaceID)
-
-	// Mock health statuses
-	healthStatuses := []ProviderHealthStatus{
-		{
-			Healthy:             true,
-			LastCheckAt:         time.Now(),
-			LastSuccessAt:       timePtr(time.Now().Add(-5 * time.Minute)),
-			ConsecutiveFailures: 0,
-			LatencyMs:           intPtr(145),
-		},
-	}
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"data": healthStatuses,
-	})
-}
-
-// controlCircuitBreaker controls the circuit breaker state
-func (h *ProviderHandler) controlCircuitBreaker(w http.ResponseWriter, r *http.Request) {
-	var req CircuitBreakerControlRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.Warn("invalid request body", "error", err.Error())
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-		return
-	}
-
 	providerID := r.URL.Query().Get("providerId")
 	if providerID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "providerId is required"})
 		return
 	}
-
-	validActions := map[string]bool{
-		"open":   true,
-		"close":  true,
-		"reset":  true,
+	var req CircuitBreakerControlRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
 	}
-	if !validActions[req.Action] {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid action"})
+	state := "closed"
+	if req.Action == "open" {
+		state = "open"
+	}
+	now := time.Now().UTC()
+	err := h.db.Providers().UpdateCircuitBreaker(r.Context(), &db.CircuitBreakerState{
+		ProviderID: providerID,
+		State:      state,
+		UpdatedAt:  now,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update circuit breaker"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"providerId": providerID, "action": req.Action, "newState": state, "appliedAt": now})
+}
+
+func (h *ProviderHandler) listProviders(w http.ResponseWriter, r *http.Request) {
+	workspaceID := r.URL.Query().Get("workspaceId")
+	page := readIntParam(r, "page", 1)
+	pageSize := readIntParam(r, "pageSize", 50)
+	if pageSize > 500 {
+		pageSize = 500
+	}
+
+	providers, err := h.fetchProvidersForWorkspace(r, workspaceID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list providers"})
 		return
 	}
 
-	h.log.Info("controlling circuit breaker",
-		"providerId", providerID,
-		"action", req.Action,
-	)
-
-	newState := "closed"
-	switch req.Action {
-	case "open":
-		newState = "open"
-	case "close":
-		newState = "closed"
-	case "reset":
-		newState = "closed"
+	resp := make([]ProviderResponse, 0, len(providers))
+	for _, p := range providers {
+		health, _ := h.db.Providers().GetHealth(r.Context(), p.ID)
+		cb, _ := h.db.Providers().GetCircuitBreaker(r.Context(), p.ID)
+		resp = append(resp, toProviderResponse(&p, health, cb))
 	}
 
-	response := CircuitBreakerControlResponse{
-		ProviderID: providerID,
-		Action:     req.Action,
-		NewState:   newState,
-		AppliedAt:  time.Now(),
+	start := (page - 1) * pageSize
+	if start > len(resp) {
+		start = len(resp)
+	}
+	end := start + pageSize
+	if end > len(resp) {
+		end = len(resp)
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, http.StatusOK, ProviderListResponse{
+		Data:     resp[start:end],
+		Total:    len(resp),
+		Page:     page,
+		PageSize: pageSize,
+		HasMore:  end < len(resp),
+	})
 }
 
-// getCircuitBreakerState returns circuit breaker state
-func (h *ProviderHandler) getCircuitBreakerState(w http.ResponseWriter, r *http.Request) {
-	providerID := r.URL.Query().Get("providerId")
-
-	h.log.Debug("getting circuit breaker state", "providerId", providerID)
-
-	state := CircuitBreakerState{
-		State:     "closed",
-		Failures:  0,
-		Successes: 1523,
-	}
-
-	writeJSON(w, http.StatusOK, state)
-}
-
-// getProviderMetrics returns provider metrics
-func (h *ProviderHandler) getProviderMetrics(w http.ResponseWriter, r *http.Request) {
-	providerID := r.URL.Query().Get("providerId")
-	startTime := h.parseTimeParam(r, "startTime", time.Now().Add(-24*time.Hour))
-	endTime := h.parseTimeParam(r, "endTime", time.Now())
-
-	h.log.Debug("getting provider metrics",
-		"providerId", providerID,
-		"startTime", startTime,
-		"endTime", endTime,
-	)
-
-	// Mock metrics
-	metrics := ProviderMetricsResponse{
-		ProviderID:   providerID,
-		ProviderName: "OpenAI Production",
-		TimeRange:    TimeRange{Start: startTime, End: endTime},
-		RequestCount: 15234,
-		SuccessCount: 15081,
-		ErrorCount:   153,
-		ErrorRate:    1.0,
-		AvgLatencyMs: 145.5,
-		TotalTokens:  152340000,
-		TotalCostUSD: 1523.45,
-		P50LatencyMs: 120.0,
-		P95LatencyMs: 250.0,
-		P99LatencyMs: 450.0,
-	}
-
-	writeJSON(w, http.StatusOK, metrics)
-}
-
-// Helper methods
-
-func (h *ProviderHandler) parseTimeParam(r *http.Request, name string, fallback time.Time) time.Time {
-	raw := r.URL.Query().Get(name)
-	if raw == "" {
-		return fallback
-	}
-	t, err := time.Parse(time.RFC3339, raw)
+func (h *ProviderHandler) getProvider(w http.ResponseWriter, r *http.Request, id string) {
+	p, err := h.db.Providers().GetByID(r.Context(), id)
 	if err != nil {
-		return fallback
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get provider"})
+		return
 	}
-	return t
+	if p == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "provider not found"})
+		return
+	}
+	health, _ := h.db.Providers().GetHealth(r.Context(), p.ID)
+	cb, _ := h.db.Providers().GetCircuitBreaker(r.Context(), p.ID)
+	writeJSON(w, http.StatusOK, toProviderResponse(p, health, cb))
+}
+
+func (h *ProviderHandler) createProvider(w http.ResponseWriter, r *http.Request) {
+	var req ProviderCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if req.Name == "" || req.ProviderType == "" || req.BaseURL == "" || req.WorkspaceID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name, providerType, baseUrl, and workspaceId are required"})
+		return
+	}
+	if req.Slug == "" {
+		req.Slug = slugify(req.Name)
+	}
+	config, _ := json.Marshal(req.Config)
+	if len(config) == 0 {
+		config = []byte("{}")
+	}
+	apiKeyHash := sha256.Sum256([]byte(req.APIKey))
+	apiKeyEncrypted := hex.EncodeToString(apiKeyHash[:])
+	now := time.Now().UTC()
+	p := &db.Provider{
+		ID:              generateID("prov"),
+		WorkspaceID:     req.WorkspaceID,
+		Slug:            req.Slug,
+		Name:            req.Name,
+		ProviderType:    req.ProviderType,
+		BaseURL:         req.BaseURL,
+		APIKeyEncrypted: &apiKeyEncrypted,
+		Config:          config,
+		Status:          "active",
+		Priority:        req.Priority,
+		Weight:          req.Weight,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if p.Weight == 0 {
+		p.Weight = 1
+	}
+	if err := h.db.Providers().Create(r.Context(), p); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create provider"})
+		return
+	}
+	writeJSON(w, http.StatusCreated, toProviderResponse(p, nil, nil))
+}
+
+func (h *ProviderHandler) updateProvider(w http.ResponseWriter, r *http.Request, id string) {
+	var req ProviderUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	p, err := h.db.Providers().GetByID(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get provider"})
+		return
+	}
+	if p == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "provider not found"})
+		return
+	}
+	if req.Name != "" {
+		p.Name = req.Name
+	}
+	if req.BaseURL != "" {
+		p.BaseURL = req.BaseURL
+	}
+	if req.Status != "" {
+		p.Status = req.Status
+	}
+	if req.Priority != nil {
+		p.Priority = *req.Priority
+	}
+	if req.Weight != nil {
+		p.Weight = *req.Weight
+	}
+	if req.Config != nil {
+		cfg, _ := json.Marshal(req.Config)
+		if len(cfg) > 0 {
+			p.Config = cfg
+		}
+	}
+	if strings.TrimSpace(req.APIKey) != "" {
+		sum := sha256.Sum256([]byte(req.APIKey))
+		hash := hex.EncodeToString(sum[:])
+		p.APIKeyEncrypted = &hash
+	}
+	p.UpdatedAt = time.Now().UTC()
+	if err := h.db.Providers().Update(r.Context(), p); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update provider"})
+		return
+	}
+	health, _ := h.db.Providers().GetHealth(r.Context(), p.ID)
+	cb, _ := h.db.Providers().GetCircuitBreaker(r.Context(), p.ID)
+	writeJSON(w, http.StatusOK, toProviderResponse(p, health, cb))
+}
+
+func (h *ProviderHandler) patchProvider(w http.ResponseWriter, r *http.Request, id string) {
+	h.updateProvider(w, r, id)
+}
+
+func (h *ProviderHandler) deleteProvider(w http.ResponseWriter, r *http.Request, id string) {
+	if err := h.db.Providers().Delete(r.Context(), id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete provider"})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *ProviderHandler) triggerHealthCheckByID(w http.ResponseWriter, r *http.Request, providerID string) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	now := time.Now().UTC()
+	lat := 100
+	health := &db.ProviderHealth{
+		ProviderID:          providerID,
+		Healthy:             true,
+		LastCheckAt:         now,
+		LastSuccessAt:       &now,
+		ConsecutiveFailures: 0,
+		LatencyMs:           &lat,
+		UpdatedAt:           now,
+	}
+	if err := h.db.Providers().UpdateHealth(r.Context(), health); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update provider health"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"providerId": providerID, "healthy": true, "latencyMs": lat, "checkedAt": now})
+}
+
+func (h *ProviderHandler) fetchProvidersForWorkspace(r *http.Request, workspaceID string) ([]db.Provider, error) {
+	if workspaceID != "" {
+		return h.db.Providers().GetByWorkspace(r.Context(), workspaceID)
+	}
+	workspaces, err := h.db.Workspaces().List(r.Context(), 500, 0)
+	if err != nil {
+		return nil, err
+	}
+	all := make([]db.Provider, 0)
+	for _, ws := range workspaces {
+		providers, err := h.db.Providers().GetByWorkspace(r.Context(), ws.ID)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, providers...)
+	}
+	return all, nil
+}
+
+func toProviderResponse(p *db.Provider, health *db.ProviderHealth, cb *db.CircuitBreakerState) ProviderResponse {
+	config := map[string]any{}
+	if len(p.Config) > 0 {
+		_ = json.Unmarshal(p.Config, &config)
+	}
+	return ProviderResponse{
+		ID:           p.ID,
+		WorkspaceID:  p.WorkspaceID,
+		Slug:         p.Slug,
+		Name:         p.Name,
+		ProviderType: p.ProviderType,
+		BaseURL:      p.BaseURL,
+		Config:       config,
+		Status:       p.Status,
+		Priority:     p.Priority,
+		Weight:       p.Weight,
+		Health:       health,
+		CircuitState: cb,
+		CreatedAt:    p.CreatedAt,
+		UpdatedAt:    p.UpdatedAt,
+	}
 }

@@ -1,13 +1,17 @@
 package admin
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"log/slog"
 
 	"radgateway/internal/config"
+	"radgateway/internal/db"
 	"radgateway/internal/logger"
 	"radgateway/internal/trace"
 	"radgateway/internal/usage"
@@ -17,14 +21,16 @@ type Handlers struct {
 	cfg   config.Config
 	usage usage.Sink
 	trace *trace.Store
+	db    db.Database
 	log   *slog.Logger
 }
 
-func NewHandlers(cfg config.Config, usageSink usage.Sink, traceStore *trace.Store) *Handlers {
+func NewHandlers(cfg config.Config, usageSink usage.Sink, traceStore *trace.Store, database db.Database) *Handlers {
 	return &Handlers{
 		cfg:   cfg,
 		usage: usageSink,
 		trace: traceStore,
+		db:    database,
 		log:   logger.WithComponent("admin"),
 	}
 }
@@ -37,10 +43,10 @@ func (h *Handlers) Register(mux *http.ServeMux) {
 
 	// New admin API endpoints
 	// Projects / Workspaces
-	NewProjectHandler().RegisterRoutes(mux)
+	NewProjectHandler(h.db).RegisterRoutes(mux)
 
 	// API Keys
-	NewAPIKeyHandler().RegisterRoutes(mux)
+	NewAPIKeyHandler(h.db).RegisterRoutes(mux)
 
 	// Usage
 	NewUsageHandler().RegisterRoutes(mux)
@@ -52,9 +58,9 @@ func (h *Handlers) Register(mux *http.ServeMux) {
 	NewQuotaHandler().RegisterRoutes(mux)
 
 	// Providers
-	NewProviderHandler().RegisterRoutes(mux)
+	NewProviderHandler(h.db).RegisterRoutes(mux)
 
-	NewReportingHandler().RegisterRoutes(mux)
+	NewReportingHandler(h.db).RegisterRoutes(mux)
 }
 
 func (h *Handlers) getConfig(w http.ResponseWriter, r *http.Request) {
@@ -104,8 +110,39 @@ func readLimit(r *http.Request, fallback int) int {
 	return v
 }
 
+func readIntParam(r *http.Request, name string, fallback int) int {
+	raw := r.URL.Query().Get(name)
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v <= 0 {
+		return fallback
+	}
+	return v
+}
+
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// Helper functions for pointer types
+func strPtr(s string) *string {
+	return &s
+}
+
+func intPtr(i int) *int {
+	return &i
+}
+
+func timePtr(t time.Time) *time.Time {
+	return &t
+}
+
+func generateID(prefix string) string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return prefix + "_" + hex.EncodeToString(b)
 }
