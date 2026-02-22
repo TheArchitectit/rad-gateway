@@ -31,3 +31,4 @@ scripts/
 secrets/
 !internal/secrets/
 !internal/secrets/*.go
+.worktrees/
