@@ -64,8 +64,8 @@ cd "$REPO_PATH"
 # Build container using podman
 log "Building container image..."
 podman build -t "localhost/$CONTAINER_NAME:latest" \
-    -f deploy/radgateway01/Containerfile \
-    .
+    -f "$REPO_PATH/deploy/radgateway01/Containerfile" \
+    "$REPO_PATH"
 
 # Stop existing container if running
 if podman ps --format '{{.Names}}' | grep -q "$CONTAINER_NAME-app"; then
