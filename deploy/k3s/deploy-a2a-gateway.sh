@@ -18,6 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 log "Copying K8s manifests to target..."
+ssh "$TARGET_USER@$TARGET_HOST" "mkdir -p /tmp/k8s-manifests"
 scp -r "$REPO_ROOT/k8s/" "$TARGET_USER@$TARGET_HOST:/tmp/k8s-manifests/"
 
 # Deploy to k3s
