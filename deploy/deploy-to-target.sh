@@ -35,10 +35,8 @@ tar -czf "$ARCHIVE" \
     --exclude='.git' \
     --exclude='*.tar.gz' \
     -C "$REPO_ROOT" \
-    cmd/rad-gateway cmd/migrate cmd/seed \
-    deploy/radgateway01 \
-    deploy/config \
-    deploy/bin \
+    cmd \
+    deploy \
     go.mod go.sum \
     internal \
     migrations
