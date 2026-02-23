@@ -63,6 +63,16 @@ spec:
               value: "sqlite"
             - name: RAD_DB_DSN
               value: "/data/radgateway.db"
+            - name: JWT_ACCESS_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: radgateway-secrets
+                  key: JWT_ACCESS_SECRET
+            - name: JWT_REFRESH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: radgateway-secrets
+                  key: JWT_REFRESH_SECRET
           volumeMounts:
             - name: data
               mountPath: /data
