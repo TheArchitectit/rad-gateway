@@ -52,7 +52,7 @@ podman save -o /tmp/radgateway-k3s.tar radgateway-k3s:latest
 
 # Import into k3s
 log "Importing image into k3s..."
-sudo k3s ctr image import /tmp/radgateway-k3s.tar
+sudo /usr/local/bin/k3s ctr image import /tmp/radgateway-k3s.tar
 
 log "Image import complete"
 BUILDIMAGE
