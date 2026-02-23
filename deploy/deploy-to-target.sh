@@ -48,6 +48,10 @@ set -euo pipefail
 REPO_PATH="/tmp/rad-gateway-deploy"
 CONTAINER_NAME="radgateway01"
 
+log() {
+    echo "[$(date -Iseconds] $*"
+}
+
 # Clean up any previous deployment
 rm -rf "$REPO_PATH"
 mkdir -p "$REPO_PATH"
