@@ -1,12 +1,13 @@
 #!/bin/bash
 # Deploy RAD Gateway 01 to remote host
-# Builds container on target host and deploys using install.sh
+# Builds container on target host and deploys
 
 set -euo pipefail
 
 TARGET_HOST="${1:-172.16.30.45}"
 TARGET_USER="${2:-user001}"
 REPO_PATH="/tmp/rad-gateway-deploy"
+CONTAINER_NAME="radgateway01"
 
 log() {
     echo "[$(date -Iseconds)] [deploy] $*"
@@ -42,14 +43,15 @@ scp "$ARCHIVE" "$TARGET_USER@$TARGET_HOST:$REPO_PATH.tar.gz"
 
 # Step 3: Extract and build on target
 log "Building container on target host..."
-ssh "$TARGET_USER@$TARGET_HOST" << 'EOF'
+
+ssh "$TARGET_USER@$TARGET_HOST" bash -s << 'ENDSSH'
 set -euo pipefail
 
 REPO_PATH="/tmp/rad-gateway-deploy"
 CONTAINER_NAME="radgateway01"
 
 log() {
-    echo "[$(date -Iseconds] $*"
+    echo "[$(date -Iseconds)] $*"
 }
 
 # Clean up any previous deployment
@@ -67,19 +69,19 @@ podman build -t "localhost/$CONTAINER_NAME:latest" \
 
 # Stop existing container if running
 if podman ps --format '{{.Names}}' | grep -q "$CONTAINER_NAME-app"; then
-    echo "Stopping existing container..."
+    log "Stopping existing container..."
     podman stop "$CONTAINER_NAME-app" || true
     podman rm "$CONTAINER_NAME-app" || true
 fi
 
 # Create pod if it doesn't exist
 if ! podman pod exists "$CONTAINER_NAME"; then
-    echo "Creating pod..."
+    log "Creating pod..."
     podman pod create -n "$CONTAINER_NAME" -p 8090:8090
 fi
 
 # Run the container
-echo "Starting container..."
+log "Starting container..."
 podman run -d \
     --pod "$CONTAINER_NAME" \
     --name "$CONTAINER_NAME-app" \
@@ -92,9 +94,9 @@ podman run -d \
 # Clean up archive
 rm -f "$REPO_PATH.tar.gz"
 
-echo "Container deployed successfully"
+log "Container deployed successfully"
 podman ps --pod | grep "$CONTAINER_NAME"
-EOF
+ENDSSH
 
 # Step 4: Clean up local archive
 rm -f "$ARCHIVE"
