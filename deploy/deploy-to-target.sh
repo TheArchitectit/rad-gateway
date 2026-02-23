@@ -71,18 +71,20 @@ podman build -t "localhost/$CONTAINER_NAME:latest" \
     -f "$REPO_PATH/deploy/radgateway01/Containerfile" \
     "$REPO_PATH"
 
-# Stop existing container if running
-if podman ps --format '{{.Names}}' | grep -q "$CONTAINER_NAME-app"; then
-    log "Stopping existing container..."
+# Stop and remove existing container
+if podman ps -a --format '{{.Names}}' | grep -q "$CONTAINER_NAME-app"; then
+    log "Stopping and removing existing container..."
     podman stop "$CONTAINER_NAME-app" || true
     podman rm "$CONTAINER_NAME-app" || true
 fi
 
-# Create pod if it doesn't exist
-if ! podman pod exists "$CONTAINER_NAME"; then
-    log "Creating pod..."
-    podman pod create -n "$CONTAINER_NAME" -p 8090:8090
+# Create or replace pod
+if podman pod exists "$CONTAINER_NAME"; then
+    log "Removing existing pod..."
+    podman pod rm "$CONTAINER_NAME" || true
 fi
+log "Creating pod..."
+podman pod create -n "$CONTAINER_NAME" -p 8090:8090
 
 # Create data directory with proper permissions
 log "Setting up data directory..."
