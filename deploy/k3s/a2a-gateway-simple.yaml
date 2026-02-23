@@ -51,7 +51,7 @@ spec:
     spec:
       containers:
         - name: radgateway
-          image: localhost/radgateway01:latest  # Will be built locally
+          image: localhost/radgateway-k3s:latest  # Built locally and imported to k3s
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8090
