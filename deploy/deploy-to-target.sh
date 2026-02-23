@@ -35,7 +35,13 @@ tar -czf "$ARCHIVE" \
     --exclude='.git' \
     --exclude='*.tar.gz' \
     -C "$REPO_ROOT" \
-    cmd deploy go.mod go.sum internal migrations
+    cmd/rad-gateway cmd/migrate cmd/seed \
+    deploy/radgateway01 \
+    deploy/config \
+    deploy/bin \
+    go.mod go.sum \
+    internal \
+    migrations
 
 # Step 2: Copy archive to target host
 log "Copying archive to $TARGET_HOST..."
