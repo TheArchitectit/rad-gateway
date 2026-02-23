@@ -49,7 +49,7 @@ import (
 )
 // Version of the migration tool
 const Version = "1.0.0"
-//go:embed all:migrations/*.sql
+//go:embed migrations/*.sql
 var migrationsFS embed.FS
 type Config struct {
 	DatabaseURL    string

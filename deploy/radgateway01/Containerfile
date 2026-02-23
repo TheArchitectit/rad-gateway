@@ -1,0 +1,76 @@
+# RAD Gateway 01 - Production Container
+# Multi-stage build for minimal production image
+
+# Stage 1: Build
+FROM golang:1.24-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates tzdata
+
+# Set working directory
+WORKDIR /build
+
+# Copy go mod files first for caching
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the binary with optimizations
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-w -s -X main.Version=0.2.0" \
+    -o /build/rad-gateway \
+    ./cmd/rad-gateway
+
+# Build migrate tool
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-w -s -X main.Version=1.0.0" \
+    -o /build/migrate \
+    ./cmd/migrate
+
+# Build seed tool
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-w -s" \
+    -o /build/seed \
+    ./cmd/seed
+
+# Stage 2: Production image
+FROM alpine:3.19
+
+# Install runtime dependencies
+RUN apk --no-cache add ca-certificates tzdata
+
+# Create non-root user for security
+RUN addgroup -g 1000 radgateway && \
+    adduser -D -u 1000 -G radgateway radgateway
+
+# Create data directory
+RUN mkdir -p /data && chown radgateway:radgateway /data
+
+# Copy binaries from builder
+COPY --from=builder /build/rad-gateway /usr/local/bin/rad-gateway
+COPY --from=builder /build/migrate /usr/local/bin/migrate
+COPY --from=builder /build/seed /usr/local/bin/seed
+
+# Copy migrations
+COPY --chown=radgateway:radgateway migrations/ /migrations/
+
+# Copy environment template
+COPY --chown=radgateway:radgateway deploy/config/env /etc/radgateway/env
+
+# Set working directory
+WORKDIR /data
+
+# Switch to non-root user
+USER radgateway
+
+# Expose port
+EXPOSE 8090
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8090/health || exit 1
+
+# Run the gateway
+ENTRYPOINT ["rad-gateway"]
