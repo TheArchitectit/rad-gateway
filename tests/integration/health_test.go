@@ -23,9 +23,6 @@ type HealthResponse struct {
 
 // TestHealthEndpointReturns200 validates that /health returns HTTP 200 with expected JSON
 func TestHealthEndpointReturns200(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") == "" {
-		t.Skip("Skipping integration test - set INTEGRATION_TEST=1 to run")
-	}
 	tests := []struct {
 		name           string
 		baseURL        string

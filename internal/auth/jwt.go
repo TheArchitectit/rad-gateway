@@ -40,13 +40,6 @@ type JWTConfig struct {
 	Issuer             string
 }
 
-// Default token expiry durations.
-const (
-	DefaultAccessTokenExpiry  = 15 * time.Minute
-	DefaultRefreshTokenExpiry = 7 * 24 * time.Hour // 7 days
-	MinimumSecretLength       = 32
-)
-
 // DefaultConfig returns a default JWT configuration.
 // In production, JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be set.
 func DefaultConfig() JWTConfig {
@@ -64,18 +57,18 @@ func DefaultConfig() JWTConfig {
 	}
 
 	// Validate minimum secret length
-	if len(accessSecret) < MinimumSecretLength {
-		fmt.Fprintf(os.Stderr, "[SECURITY WARNING] JWT_ACCESS_SECRET should be at least %d characters for security\n", MinimumSecretLength)
+	if len(accessSecret) < 32 {
+		fmt.Fprintf(os.Stderr, "[SECURITY WARNING] JWT_ACCESS_SECRET should be at least 32 characters for security\n")
 	}
-	if len(refreshSecret) < MinimumSecretLength {
-		fmt.Fprintf(os.Stderr, "[SECURITY WARNING] JWT_REFRESH_SECRET should be at least %d characters for security\n", MinimumSecretLength)
+	if len(refreshSecret) < 32 {
+		fmt.Fprintf(os.Stderr, "[SECURITY WARNING] JWT_REFRESH_SECRET should be at least 32 characters for security\n")
 	}
 
 	return JWTConfig{
 		AccessTokenSecret:  []byte(accessSecret),
 		RefreshTokenSecret: []byte(refreshSecret),
-		AccessTokenExpiry:  DefaultAccessTokenExpiry,
-		RefreshTokenExpiry: DefaultRefreshTokenExpiry,
+		AccessTokenExpiry:  15 * time.Minute,
+		RefreshTokenExpiry: 7 * 24 * time.Hour,
 		Issuer:             "rad-gateway",
 	}
 }
@@ -104,8 +97,8 @@ func LoadConfig() (JWTConfig, error) {
 	return JWTConfig{
 		AccessTokenSecret:  []byte(accessSecret),
 		RefreshTokenSecret: []byte(refreshSecret),
-		AccessTokenExpiry:  DefaultAccessTokenExpiry,
-		RefreshTokenExpiry: DefaultRefreshTokenExpiry,
+		AccessTokenExpiry:  15 * time.Minute,
+		RefreshTokenExpiry: 7 * 24 * time.Hour,
 		Issuer:             "rad-gateway",
 	}, nil
 }

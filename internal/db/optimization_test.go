@@ -337,11 +337,10 @@ func BenchmarkJoinUserRoles(b *testing.B) {
 	ctx := context.Background()
 
 	// Create roles
-	roleDesc := "Test Role"
 	role := &Role{
 		ID:          uuid.New().String(),
 		Name:        "test-role",
-		Description: &roleDesc,
+		Description: "Test Role",
 		IsSystem:    false,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
@@ -432,7 +431,6 @@ func TestQueryBuilder(t *testing.T) {
 
 // TestBulkInsert tests bulk insert functionality
 func TestBulkInsert(t *testing.T) {
-	t.Skip("SQLite DSN handling issue - NewSQLite appends params to DSN with existing params")
 	config := Config{
 		Driver: "sqlite",
 		DSN:    fmt.Sprintf("file:/tmp/test_bulk_%s.db?mode=memory", uuid.New().String()),
@@ -531,7 +529,18 @@ func TestQueryHints(t *testing.T) {
 	}
 }
 
-// ExampleQueryBuilder_disabled is not a runnable example test due to time.Now() non-determinism
-func ExampleQueryBuilder_disabled() {
-	// Example disabled - time.Now() produces different output each run
+// Example usage of QueryBuilder
+func ExampleQueryBuilder() {
+	qb := NewQueryBuilder("SELECT * FROM usage_records").
+		Where("workspace_id = ?", "ws_123").
+		Where("created_at > ?", time.Now().Add(-24*time.Hour)).
+		OrderBy("created_at DESC").
+		Limit(100)
+
+	query, args := qb.Build()
+	fmt.Printf("Query: %s\n", query)
+	fmt.Printf("Args: %v\n", args)
+	// Output:
+	// Query: SELECT * FROM usage_records WHERE workspace_id = ? AND created_at > ? ORDER BY created_at DESC LIMIT 100
+	// Args: [ws_123 2024-...]
 }

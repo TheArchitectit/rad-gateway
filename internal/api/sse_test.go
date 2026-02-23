@@ -59,7 +59,33 @@ func TestSSEHandler_NewSSEHandler(t *testing.T) {
 }
 
 func TestSSEHandler_RegisterRoutes(t *testing.T) {
-	t.Skip("TODO: Fix SSE handler test - requires mocking Flusher interface")
+	hc := newMockHealthChecker()
+	handler := NewSSEHandler(hc)
+
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+
+	// Test that routes are registered
+	testCases := []struct {
+		path   string
+		method string
+		expect int
+	}{
+		{"/v0/admin/events", "GET", http.StatusOK},
+		{"/v0/admin/events/subscribe", "POST", http.StatusBadRequest}, // Missing body
+		{"/v0/admin/events/subscribe", "DELETE", http.StatusBadRequest}, // Missing body
+	}
+
+	for _, tc := range testCases {
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		w := httptest.NewRecorder()
+
+		mux.ServeHTTP(w, req)
+
+		if w.Code != tc.expect {
+			t.Errorf("%s %s: expected status %d, got %d", tc.method, tc.path, tc.expect, w.Code)
+		}
+	}
 }
 
 func TestSSEHandler_handleEvents_MethodNotAllowed(t *testing.T) {

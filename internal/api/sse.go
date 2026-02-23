@@ -290,11 +290,6 @@ func (h *SSEHandler) sendEvent(client *Client, event Event) error {
 		return nil
 	}
 
-	// Check if client has valid SSE connection
-	if client.sseClient == nil {
-		return fmt.Errorf("client has no SSE connection")
-	}
-
 	// Marshal event payload to JSON
 	data, err := json.Marshal(event)
 	if err != nil {

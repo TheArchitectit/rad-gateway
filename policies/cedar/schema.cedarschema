@@ -1,0 +1,36 @@
+// RAD Gateway A2A - Cedar Policy Schema
+// Defines entity types and actions for authorization
+
+namespace A2A {
+    // Entity Types
+    public entity Agent {
+        spiffeId: String,
+        capabilities: Set<String>,
+        trustScore: Decimal,
+        workspace: String,
+        allowedJurisdictions: Set<String>,
+        jurisdiction: String,
+    };
+
+    public entity Task {
+        id: String,
+        owner: Agent,
+        status: String,
+        jurisdiction: String,
+        workspace: String,
+    };
+
+    public entity Workspace {
+        id: String,
+        name: String,
+        jurisdiction: String,
+    };
+
+    // Action types
+    public action submit_task;
+    public action cancel_task;
+    public action view_task;
+    public action stream_events;
+    public action invoke_capability;
+    public action access_resource;
+}

@@ -1,0 +1,74 @@
+# RAD Gateway A2A - Gateway Resource
+# Defines the logical load balancer with mTLS termination
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: a2a-gateway
+  namespace: gateway-system
+  labels:
+    app.kubernetes.io/name: a2a-gateway
+    app.kubernetes.io/part-of: a2a-gateway
+spec:
+  gatewayClassName: a2a-gateway-class
+  listeners:
+    # HTTPS listener for A2A protocol traffic with mTLS
+    - name: https-a2a
+      protocol: HTTPS
+      port: 443
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway-route-access: "true"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: a2a-gateway-cert
+            group: ""
+            kind: Secret
+        options:
+          # Enforce TLS 1.3 for security
+          gateway.envoyproxy.io/tls-min-version: "1.3"
+          # Enable HTTP/2 for A2A streaming
+          gateway.envoyproxy.io/http2-enabled: "true"
+
+    # HTTP listener for well-known agent card discovery
+    - name: http-well-known
+      protocol: HTTP
+      port: 80
+      hostname: "*.internal.corp"
+      allowedRoutes:
+        namespaces:
+          from: Same
+      tls:
+        redirectTo:
+          scheme: HTTPS
+          statusCode: 301
+
+    # gRPC listener for MCP protocol
+    - name: grpc-mcp
+      protocol: HTTPS
+      port: 8443
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway-route-access: "true"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: a2a-gateway-cert
+
+  # Infrastructure configuration
+  infrastructure:
+    annotations:
+      # Cilium eBPF dataplane
+      cilium.io/loadbalancer-mode: "snat"
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: a2a-envoy-config
+      namespace: gateway-system

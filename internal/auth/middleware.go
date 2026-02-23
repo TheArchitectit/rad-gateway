@@ -11,16 +11,14 @@ import (
 	"radgateway/internal/rbac"
 )
 
-// contextKey is an empty struct type for context keys to guarantee uniqueness.
-type contextKey struct{}
+// contextKey is the type for context keys.
+type contextKey string
 
-// Context keys for authentication context values.
-// Using empty struct ensures no collisions with other packages.
-var (
+const (
 	// ContextKeyClaims stores the JWT claims in context.
-	ContextKeyClaims = contextKey{}
+	ContextKeyClaims contextKey = "auth_claims"
 	// ContextKeyUserID stores the user ID in context.
-	ContextKeyUserID = contextKey{}
+	ContextKeyUserID contextKey = "auth_user_id"
 )
 
 // Middleware provides JWT authentication middleware.

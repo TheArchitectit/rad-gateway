@@ -1,0 +1,135 @@
+# RAD Gateway A2A - Backend Deployment
+# Deploys the Go-based RAD Gateway backend
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: radgateway-backend
+  namespace: radgateway
+  labels:
+    app: radgateway-backend
+    app.kubernetes.io/name: radgateway
+    app.kubernetes.io/part-of: a2a-gateway
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: radgateway-backend
+  template:
+    metadata:
+      labels:
+        app: radgateway-backend
+        app.kubernetes.io/name: radgateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: radgateway-sa
+      containers:
+        - name: radgateway
+          image: ghcr.io/thearchitectit/rad-gateway:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8090
+              protocol: TCP
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: radgateway-config
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: radgateway-config
+                  key: REDIS_URL
+            - name: KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: radgateway-config
+                  key: KAFKA_BROKERS
+            - name: SPIFFE_TRUST_DOMAIN
+              valueFrom:
+                configMapKeyRef:
+                  name: radgateway-config
+                  key: SPIFFE_TRUST_DOMAIN
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: radgateway-config
+                  key: LOG_LEVEL
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: radgateway-secrets
+                  key: API_KEY
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: radgateway-secrets
+                  key: JWT_SECRET
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      # SPIRE socket mount for workload identity
+      volumes:
+        - name: spire-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: radgateway-backend
+  namespace: radgateway
+  labels:
+    app: radgateway-backend
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8090
+      targetPort: http
+      protocol: TCP
+  selector:
+    app: radgateway-backend
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: radgateway-sa
+  namespace: radgateway
+  labels:
+    app: radgateway-backend
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: radgateway-sa-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - kind: ServiceAccount
+    name: radgateway-sa
+    namespace: radgateway

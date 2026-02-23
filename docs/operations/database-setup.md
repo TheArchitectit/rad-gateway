@@ -25,7 +25,7 @@ cd /mnt/ollama/git/RADAPI01
 This will create:
 - Database: `radgateway`
 - User: `radgateway_user`
-- Password: `DATABASE_PASSWORD_REDACTED` (change in production)
+- Password: `radgateway_secure_password_2024` (change in production)
 
 2. **Configure RAD Gateway to use PostgreSQL:**
 
@@ -34,7 +34,7 @@ This will create:
 sudo mkdir -p /opt/radgateway01/config
 sudo tee /opt/radgateway01/config/env << 'EOF'
 RAD_DB_DRIVER=postgres
-RAD_DB_DSN=postgresql://radgateway_user:DATABASE_PASSWORD_REDACTED@localhost:5432/radgateway?sslmode=disable
+RAD_DB_DSN=postgresql://radgateway_user:radgateway_secure_password_2024@localhost:5432/radgateway?sslmode=disable
 RAD_DB_MAX_OPEN_CONNS=10
 RAD_DB_MAX_IDLE_CONNS=3
 EOF
@@ -43,7 +43,7 @@ EOF
 3. **Test the connection:**
 
 ```bash
-psql "postgresql://radgateway_user:DATABASE_PASSWORD_REDACTED@localhost:5432/radgateway" -c "SELECT 1"
+psql "postgresql://radgateway_user:radgateway_secure_password_2024@localhost:5432/radgateway" -c "SELECT 1"
 ```
 
 ### Manual Setup (Alternative)

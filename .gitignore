@@ -5,13 +5,10 @@
 
 # Local state
 .teams/
-.worktrees/
-worktrees/
 
 # Build artifacts
 bin/
 dist/
-rad-gateway
 
 # OS/editor
 .DS_Store
@@ -32,4 +29,6 @@ scripts/
 *.key
 *.pem
 secrets/
-
+!internal/secrets/
+!internal/secrets/*.go
+.worktrees/

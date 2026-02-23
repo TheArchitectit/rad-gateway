@@ -80,14 +80,14 @@ This audit identifies **14 hardcoded secrets** and **6 secret categories** requi
 
 1. **env.example** - `/mnt/ollama/git/RADAPI01/config/env.example:10`
    ```
-   RAD_DB_DSN=postgresql://radgateway_user:DATABASE_PASSWORD_REDACTED@localhost:5432/radgateway?sslmode=disable
+   RAD_DB_DSN=postgresql://radgateway_user:radgateway_secure_password_2024@localhost:5432/radgateway?sslmode=disable
    ```
-   - Password: `DATABASE_PASSWORD_REDACTED`
+   - Password: `radgateway_secure_password_2024`
    - Risk: Developers may copy this to production
 
 2. **env.local** - `/mnt/ollama/git/RADAPI01/config/env.local:8`
    ```
-   RAD_DB_DSN=postgresql://radgateway_user:DATABASE_PASSWORD_REDACTED@localhost:5432/radgateway?sslmode=disable
+   RAD_DB_DSN=postgresql://radgateway_user:radgateway_secure_password_2024@localhost:5432/radgateway?sslmode=disable
    ```
    - Same password as env.example
    - Risk: Committed to git (even if in .gitignore, may leak)
@@ -118,8 +118,8 @@ This audit identifies **14 hardcoded secrets** and **6 secret categories** requi
 
 1. **Root .env file** - `/mnt/ollama/git/RADAPI01/.env:11-12`
    ```
-   INFISICAL_SERVICE_TOKEN=INFISICAL_SERVICE_TOKEN_REDACTED
-   INFISICAL_TOKEN=INFISICAL_SERVICE_TOKEN_REDACTED
+   INFISICAL_SERVICE_TOKEN=st.227fc651-7fe7-4cb2-8b93-3bbc0bf72469.7a3cc37d75259e2e392b4035a5c78a98.b4c87602da8cfa2cf0f3df32db6a1ee1
+   INFISICAL_TOKEN=st.227fc651-7fe7-4cb2-8b93-3bbc0bf72469.7a3cc37d75259e2e392b4035a5c78a98.b4c87602da8cfa2cf0f3df32db6a1ee1
    ```
    - **IMMEDIATE RISK:** Active service token committed to git
    - Format: Infisical service token v3

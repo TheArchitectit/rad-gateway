@@ -17,7 +17,7 @@ func TestTypedModelCardCache_GetAndSet(t *testing.T) {
 	}
 	baseCache, err := NewGoRedis(redisConfig)
 	if err != nil {
-		t.Skipf("Redis not available: %v", err)
+		t.Fatalf("Failed to create base cache: %v", err)
 	}
 	defer baseCache.Close()
 
@@ -78,7 +78,7 @@ func TestTypedModelCardCache_Delete(t *testing.T) {
 	}
 	baseCache, err := NewGoRedis(redisConfig)
 	if err != nil {
-		t.Skipf("Redis not available: %v", err)
+		t.Fatalf("Failed to create base cache: %v", err)
 	}
 	defer baseCache.Close()
 
@@ -127,7 +127,7 @@ func TestTypedModelCardCache_ProjectCards(t *testing.T) {
 	}
 	baseCache, err := NewGoRedis(redisConfig)
 	if err != nil {
-		t.Skipf("Redis not available: %v", err)
+		t.Fatalf("Failed to create base cache: %v", err)
 	}
 	defer baseCache.Close()
 
@@ -192,7 +192,7 @@ func TestTypedModelCardCache_BySkill(t *testing.T) {
 	}
 	baseCache, err := NewGoRedis(redisConfig)
 	if err != nil {
-		t.Skipf("Redis not available: %v", err)
+		t.Fatalf("Failed to create base cache: %v", err)
 	}
 	defer baseCache.Close()
 
@@ -265,7 +265,7 @@ func TestTypedModelCardCache_InvalidateCard(t *testing.T) {
 	}
 	baseCache, err := NewGoRedis(redisConfig)
 	if err != nil {
-		t.Skipf("Redis not available: %v", err)
+		t.Fatalf("Failed to create base cache: %v", err)
 	}
 	defer baseCache.Close()
 
@@ -330,7 +330,7 @@ func TestTypedModelCardCache_CardWithA2AData(t *testing.T) {
 	}
 	baseCache, err := NewGoRedis(redisConfig)
 	if err != nil {
-		t.Skipf("Redis not available: %v", err)
+		t.Fatalf("Failed to create base cache: %v", err)
 	}
 	defer baseCache.Close()
 
@@ -417,7 +417,7 @@ func TestTypedModelCardCache_KeyFormats(t *testing.T) {
 	}
 	baseCache, err := NewGoRedis(redisConfig)
 	if err != nil {
-		t.Skipf("Redis not available: %v", err)
+		t.Fatalf("Failed to create base cache: %v", err)
 	}
 	defer baseCache.Close()
 

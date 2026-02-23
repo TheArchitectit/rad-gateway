@@ -1,0 +1,87 @@
+# RAD Gateway A2A - BackendTrafficPolicy
+# Circuit breaking, health checks, and rate limiting for agent backends
+
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: a2a-agent-health-policy
+  namespace: a2a-agents
+  labels:
+    app.kubernetes.io/name: a2a-agent-health-policy
+    app.kubernetes.io/part-of: a2a-gateway
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: a2a-protocol-route
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: mcp-protocol-route
+
+  # Circuit breaker configuration
+  circuitBreaker:
+    maxConnections: 1000
+    maxPendingRequests: 100
+    maxRequests: 1000
+    maxRetries: 3
+    maxConnectionPools: 100
+    trippedThreshold:
+      threshold: 5
+      window: 30s
+
+  # Active health checks
+  healthCheck:
+    active:
+      type: HTTP
+      path: /health
+      interval: 10s
+      timeout: 5s
+      unhealthyThreshold: 3
+      healthyThreshold: 1
+      expectedStatuses:
+        - 200
+        - 204
+    passive:
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      consecutive5xxErrors: 5
+      interval: 10s
+
+  # Rate limiting
+  rateLimit:
+    type: Global
+    global:
+      rules:
+        # Per-client rate limit
+        - clientSelectors:
+            - headers:
+                - name: X-Client-ID
+                  type: DistinctRemote
+          limit:
+            requests: 100
+            unit: Minute
+        # Global rate limit
+        - limit:
+            requests: 10000
+            unit: Minute
+
+  # Retry policy
+  retry:
+    retryOn:
+      - connect-failure
+      - reset
+      - 5xx
+      - retriable-4xx
+    numRetries: 3
+    perRetryTimeout: 10s
+    backoff:
+      baseInterval: 100ms
+      maxInterval: 1s
+
+  # Timeout configuration
+  timeout:
+    tcp:
+      connectTimeout: 10s
+    http:
+      connectionIdleTimeout: 300s
+      maxConnectionDuration: 600s
