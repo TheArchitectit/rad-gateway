@@ -84,6 +84,11 @@ if ! podman pod exists "$CONTAINER_NAME"; then
     podman pod create -n "$CONTAINER_NAME" -p 8090:8090
 fi
 
+# Create data directory with proper permissions
+log "Setting up data directory..."
+mkdir -p "/opt/$CONTAINER_NAME/data"
+chown 1000:1000 "/opt/$CONTAINER_NAME/data"
+
 # Run the container
 log "Starting container..."
 podman run -d \
