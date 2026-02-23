@@ -33,56 +33,68 @@ log() {
 }
 
 MANIFESTS_DIR="/tmp/k8s-manifests/k8s"
+SIMPLE_MANIFEST="$TARGET_USER@$TARGET_HOST:/tmp/a2a-gateway-simple.yaml"
 
 # Step 1: Install Gateway API CRDs
 log "Installing Gateway API CRDs..."
 kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
-
-# Wait for CRDs to be ready
 sleep 5
 
 # Step 2: Create namespaces
 log "Creating namespaces..."
 kubectl create namespace gateway-system --dry-run=client -o yaml | kubectl apply -f -
-kubectl create namespace kafka --dry-run=client -o yaml | kubectl apply -f -
-kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
 kubectl create namespace radgateway --dry-run=client -o yaml | kubectl apply -f -
 
-# Step 3: Install Gateway API resources
-log "Applying Gateway API resources..."
-kubectl apply -f "$MANIFESTS_DIR/gateway/" -n gateway-system
+# Step 3: Copy simplified manifest
+log "Copying simplified deployment manifest..."
+scp "$SCRIPT_DIR/a2a-gateway-simple.yaml" "$SIMPLE_MANIFEST"
 
-# Step 4: Install Kafka (Strimzi operator required)
-log "Installing Kafka cluster..."
-# Install Strimzi operator first
-kubectl apply -f https://strimzi.io/install/latest?namespace=kafka -n kafka
-# Wait for operator
-kubectl wait --for=condition=Available deployment/strimzi-cluster-operator -n kafka --timeout=120s || true
-# Apply Kafka cluster
-kubectl apply -f "$MANIFESTS_DIR/kafka/" -n kafka
+# Step 4: Build and import container image into k3s
+log "Building container image..."
+cd "$REPO_ROOT"
+tar -czf /tmp/radgateway-image.tar.gz \
+    --exclude='web/node_modules' \
+    --exclude='web/dist' \
+    --exclude='.git' \
+    -C "$REPO_ROOT" \
+    cmd deploy go.mod go.sum internal migrations
+scp /tmp/radgateway-image.tar.gz "$TARGET_USER@$TARGET_HOST:/tmp/"
 
-# Step 5: Install OpenTelemetry Collector
-log "Installing OpenTelemetry Collector..."
-kubectl apply -f "$MANIFESTS_DIR/otel/" -n observability
+ssh "$TARGET_USER@$TARGET_HOST" << 'BUILDIMAGE'
+set -euo pipefail
+log() { echo "[$(date -Iseconds)] $*" ; }
 
-# Step 6: Deploy backend
-log "Deploying RAD Gateway backend..."
-kubectl apply -f "$MANIFESTS_DIR/deploy/" -n radgateway
+cd /tmp
+mkdir -p radgateway-build
+tar -xzf radgateway-image.tar.gz -C radgateway-build
+cd radgateway-build
 
-# Step 7: Wait for deployment
+log "Building image with podman..."
+podman build -t radgateway-k3s:latest \
+    -f deploy/radgateway01/Containerfile \
+    .
+
+log "Saving image for k3s import..."
+podman save -o /tmp/radgateway-k3s.tar radgateway-k3s:latest
+
+# Import into k3s
+log "Importing image into k3s..."
+sudo k3s ctr image import /tmp/radgateway-k3s.tar
+
+log "Image import complete"
+BUILDIMAGE
+
+# Step 5: Apply simplified deployment
+log "Applying simplified deployment..."
+ssh "$TARGET_USER@$TARGET_HOST" "kubectl apply -f /tmp/a2a-gateway-simple.yaml"
+
+# Step 6: Wait for deployment
 log "Waiting for deployment..."
-kubectl wait deployment radgateway-backend -n radgateway --for=condition=Available --timeout=300s || true
+ssh "$TARGET_USER@$TARGET_HOST" "kubectl wait deployment radgateway-backend -n radgateway --for=condition=Available --timeout=300s" || true
 
-# Step 8: Show status
+# Step 7: Show status
 log "Deployment status:"
-kubectl get pods -n radgateway
-kubectl get pods -n gateway-system
-kubectl get pods -n kafka
-kubectl get svc -n radgateway
-
-# Expose service (NodePort for k3s)
-log "Creating NodePort service..."
-kubectl patch svc radgateway-backend -n radgateway -p '{"spec":{"type":"NodePort","ports":[{"port":8090,"nodePort":30090}]}}' || true
+ssh "$TARGET_USER@$TARGET_HOST" "kubectl get pods -n radgateway; kubectl get svc -n radgateway"
 
 log "Deployment complete!"
 log "Access the gateway at: http://$TARGET_HOST:30090"

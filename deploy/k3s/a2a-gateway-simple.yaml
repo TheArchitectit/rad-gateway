@@ -1,0 +1,138 @@
+# Simplified A2A Gateway deployment for k3s
+# Uses standard Kubernetes resources instead of Envoy Gateway extensions
+
+---
+# GatewayClass - using built-in k3s traefik or install contour
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: a2a-gateway-class
+spec:
+  controllerName: k3s.io/ingress-controller
+
+---
+# Gateway - simplified without Envoy-specific fields
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: a2a-gateway
+  namespace: gateway-system
+  labels:
+    app.kubernetes.io/name: a2a-gateway
+    app.kubernetes.io/part-of: a2a-gateway
+spec:
+  gatewayClassName: a2a-gateway-class
+  listeners:
+    - name: http-a2a
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+
+---
+# Backend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: radgateway-backend
+  namespace: radgateway
+  labels:
+    app: radgateway
+spec:
+  replicas: 1  # Single replica for k3s
+  selector:
+    matchLabels:
+      app: radgateway
+  template:
+    metadata:
+      labels:
+        app: radgateway
+    spec:
+      containers:
+        - name: radgateway
+          image: localhost/radgateway01:latest  # Will be built locally
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8090
+              name: http
+          env:
+            - name: RAD_LISTEN_ADDR
+              value: ":8090"
+            - name: RAD_DB_DRIVER
+              value: "sqlite"
+            - name: RAD_DB_DSN
+              value: "/data/radgateway.db"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            initialDelaySeconds: 15
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: radgateway-data
+
+---
+# PVC for data persistence
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: radgateway-data
+  namespace: radgateway
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# Service - NodePort for external access
+apiVersion: v1
+kind: Service
+metadata:
+  name: radgateway-backend
+  namespace: radgateway
+  labels:
+    app: radgateway
+spec:
+  type: NodePort
+  ports:
+    - port: 8090
+      targetPort: 8090
+      nodePort: 30090
+      protocol: TCP
+      name: http
+  selector:
+    app: radgateway
+
+---
+# HTTPRoute for Gateway API routing
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: radgateway-route
+  namespace: radgateway
+spec:
+  parentRefs:
+    - name: a2a-gateway
+      namespace: gateway-system
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: radgateway-backend
+          port: 8090
