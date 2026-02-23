@@ -32,7 +32,7 @@ log() {
     echo "[$(date -Iseconds)] $*"
 }
 
-MANIFESTS_DIR="/tmp/k8s-manifests"
+MANIFESTS_DIR="/tmp/k8s-manifests/k8s"
 
 # Step 1: Install Gateway API CRDs
 log "Installing Gateway API CRDs..."
