@@ -680,7 +680,7 @@ func generateSampleUsageRecords(g *Generator, data *FullSeedData, count int) []d
 		// Pick random workspace
 		ws := RandomChoice(data.Workspaces)
 
-		// Pick random user from workspace
+		// Pick random user from workspace (discard - not needed for usage records)
 		var userID string
 		for _, u := range data.Users {
 			if u.WorkspaceID == ws.ID {
@@ -688,6 +688,7 @@ func generateSampleUsageRecords(g *Generator, data *FullSeedData, count int) []d
 				break
 			}
 		}
+		_ = userID // suppress unused warning
 
 		// Pick random provider from workspace
 		var provID string

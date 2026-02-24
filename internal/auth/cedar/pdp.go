@@ -7,31 +7,12 @@ import (
 	"os"
 
 	"github.com/cedar-policy/cedar-go"
+	"github.com/cedar-policy/cedar-go/types"
 )
 
 // PolicyDecisionPoint evaluates authorization requests against Cedar policies
 type PolicyDecisionPoint struct {
 	policySet *cedar.PolicySet
-	schema    *cedar.Schema
-}
-
-// NewPDP creates a new policy decision point from policy files
-func NewPDP(policyPath string) (*PolicyDecisionPoint, error) {
-	// Read policy file
-	policyBytes, err := os.ReadFile(policyPath)
-	if err != nil {
-		return nil, fmt.Errorf("reading policy file: %w", err)
-	}
-
-	// Parse policies
-	policySet, err := cedar.ParsePolicies(string(policyBytes))
-	if err != nil {
-		return nil, fmt.Errorf("parsing policies: %w", err)
-	}
-
-	return &PolicyDecisionPoint{
-		policySet: policySet,
-	}, nil
 }
 
 // AuthorizationRequest represents a request to authorize
@@ -48,52 +29,77 @@ type AuthorizationDecision struct {
 	Reasons  []string `json:"reasons,omitempty"`
 }
 
+// NewPDP creates a new policy decision point from policy files
+func NewPDP(policyPath string) (*PolicyDecisionPoint, error) {
+	// Read policy file
+	policyBytes, err := os.ReadFile(policyPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading policy file: %w", err)
+	}
+
+	// Parse policies using NewPolicySetFromBytes
+	policySet, err := cedar.NewPolicySetFromBytes(policyPath, policyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("parsing policies: %w", err)
+	}
+
+	return &PolicyDecisionPoint{
+		policySet: policySet,
+	}, nil
+}
+
 // Authorize evaluates an authorization request against policies
 func (p *PolicyDecisionPoint) Authorize(
 	ctx context.Context,
 	req AuthorizationRequest,
 ) (*AuthorizationDecision, error) {
-	// Convert to Cedar entities
-	principal := cedar.EntityUID{
-		Type: "A2A::Agent",
-		ID:   cedar.String(req.Principal),
+	// Convert to Cedar entities using NewEntityUID helper
+	principal := types.NewEntityUID(types.EntityType("A2A::Agent"), types.String(req.Principal))
+	action := types.NewEntityUID(types.EntityType("A2A::Action"), types.String(req.Action))
+	resource := types.NewEntityUID(types.EntityType("A2A::Task"), types.String(req.Resource))
+
+	// Build entities - keys are EntityUID
+	entities := types.EntityMap{
+		principal: types.Entity{
+			UID:        principal,
+			Attributes: types.Record{},
+		},
+		action: types.Entity{
+			UID:        action,
+			Attributes: types.Record{},
+		},
+		resource: types.Entity{
+			UID:        resource,
+			Attributes: types.Record{},
+		},
 	}
 
-	action := cedar.EntityUID{
-		Type: "A2A::Action",
-		ID:   cedar.String(req.Action),
+	// Build request - EntityUID not pointer
+	cedarReq := types.Request{
+		Principal: principal,
+		Action:    action,
+		Resource:  resource,
 	}
 
-	resource := cedar.EntityUID{
-		Type: "A2A::Task",
-		ID:   cedar.String(req.Resource),
+	// Evaluate the policy using Authorize function
+	decision, diagnostic := cedar.Authorize(p.policySet, entities, cedarReq)
+
+	result := "Deny"
+	if decision == cedar.Allow {
+		result = "Allow"
 	}
 
-	// Build context from request
-	context := cedar.NewRecord(cedar.RecordMap{})
-	for k, v := range req.Context {
-		context.Set(cedar.String(k), cedar.String(fmt.Sprintf("%v", v)))
-	}
-
-	// Evaluate the policy
-	result, err := p.policySet.IsAuthorized(
-		principal,
-		action,
-		resource,
-		[]cedar.Context{context},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("policy evaluation error: %w", err)
-	}
-
-	decision := "Deny"
-	if result.Decision == cedar.Allow {
-		decision = "Allow"
+	// Extract reasons if available
+	var reasons []string
+	if len(diagnostic.Reasons) > 0 {
+		for _, r := range diagnostic.Reasons {
+			reasons = append(reasons, string(r.PolicyID))
+		}
 	}
 
 	return &AuthorizationDecision{
-		Decision: decision,
-		Reasons:  result.Reasons,
+		Decision: result,
+		Reasons:  reasons,
 	}, nil
 }
 

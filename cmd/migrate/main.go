@@ -36,16 +36,16 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"embed"
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/anthropics/rad-gateway/internal/db"
+	"radgateway/internal/db"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -597,7 +597,8 @@ func connect(cfg Config) (db.Database, *db.Migrator, error) {
 	// Parse database URL to determine driver
 	driver, dsn := parseDatabaseURL(cfg.DatabaseURL)
 
-	// Create database config	dbConfig := db.Config{
+	// Create database config
+	dbConfig := db.Config{
 		Driver: driver,
 		DSN:    dsn,
 	}
