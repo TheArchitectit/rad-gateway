@@ -16,7 +16,9 @@ RAD Gateway has completed 5 major development phases:
 - **Phase 3: The Backend Core** - API & Logic ✅
 - **Phase 4: The Data Wardens** - Database & Modeling ✅
 - **Phase 5: The Integrators** - Frontend/Backend Integration ✅
-- **Phase 6: The Sentinels** - Security Hardening (Next)
+- **Phase 6: The Sentinels** - Security Hardening (Current)
+- **Phase 7: A2A Protocol** - Agent-to-Agent Support (Planned)
+- **Phase 8: Production** - Kubernetes, SPIFFE, Wasm Filters (Planned)
 
 ### Recent Achievements
 
