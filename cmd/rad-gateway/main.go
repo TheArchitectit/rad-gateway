@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"time"
@@ -28,7 +29,7 @@ import (
 	"radgateway/internal/usage"
 )
 
-//go:embed assets
+//go:embed all:assets
 var assets embed.FS
 
 // a2aCacheAdapter adapts cache.TypedModelCardCache to a2a.Cache interface.
@@ -281,6 +282,16 @@ func main() {
 	combinedMux.Handle("/v1/", apiHandler)
 	combinedMux.Handle("/a2a/", apiHandler)
 	combinedMux.Handle("/mcp/", apiHandler)
+
+	// Serve embedded web UI assets
+	// Use fs.Sub to strip the "assets" prefix from the embedded FS
+	if webFS, err := fs.Sub(assets, "assets"); err == nil {
+		fileServer := http.FileServer(http.FS(webFS))
+		combinedMux.Handle("/", fileServer)
+		log.Info("web UI assets served from embedded filesystem")
+	} else {
+		log.Warn("failed to setup web UI assets", "error", err.Error())
+	}
 
 	// Apply global middleware
 	handler := middleware.WithRequestContext(combinedMux)
