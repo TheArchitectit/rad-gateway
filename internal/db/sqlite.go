@@ -37,6 +37,7 @@ type repositories struct {
 	usageRecords *sqliteUsageRecordRepo
 	traceEvents  *sqliteTraceEventRepo
 	modelCards   *sqliteModelCardRepo
+	auditLog     *sqliteAuditLogRepo
 }
 
 // NewSQLite creates a new SQLite database connection.
@@ -86,6 +87,7 @@ func NewSQLite(config Config) (*SQLiteDB, error) {
 		usageRecords: &sqliteUsageRecordRepo{db: db},
 		traceEvents:  &sqliteTraceEventRepo{db: db},
 		modelCards:   &sqliteModelCardRepo{db: db},
+		auditLog:     &sqliteAuditLogRepo{db: db},
 	}
 
 	return database, nil
@@ -134,6 +136,7 @@ func (s *SQLiteDB) Quotas() QuotaRepository             { return s.repos.quotas 
 func (s *SQLiteDB) UsageRecords() UsageRecordRepository { return s.repos.usageRecords }
 func (s *SQLiteDB) TraceEvents() TraceEventRepository   { return s.repos.traceEvents }
 func (s *SQLiteDB) ModelCards() ModelCardRepository     { return s.repos.modelCards }
+func (s *SQLiteDB) AuditLog() AuditLogRepository         { return s.repos.auditLog }
 
 // DB returns the underlying *sql.DB for migrations and advanced operations.
 func (s *SQLiteDB) DB() *sql.DB { return s.db }
@@ -1327,4 +1330,36 @@ func (r *sqliteModelCardRepo) createVersion(ctx context.Context, card *ModelCard
 		card.Version, card.Name, card.Slug, card.Description,
 		card.Card, card.Status, changeReason, createdBy, card.CreatedAt)
 	return err
+}
+
+// sqliteAuditLogRepo implements AuditLogRepository for SQLite.
+type sqliteAuditLogRepo struct{ db *sql.DB }
+
+func (r *sqliteAuditLogRepo) Log(ctx context.Context, eventType string, severity string, actorType, actorID, actorName string, resourceType, resourceID string, action, result string, details map[string]interface{}) error {
+	detailsJSON, _ := json.Marshal(details)
+	query := `INSERT INTO audit_log (id, timestamp, type, severity, actor_type, actor_id, actor_name, resource_type, resource_id, action, result, details)
+		VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	_, err := r.db.ExecContext(ctx, query, generateUUID(), eventType, severity, actorType, actorID, actorName, resourceType, resourceID, action, result, detailsJSON)
+	return err
+}
+
+func (r *sqliteAuditLogRepo) Query(ctx context.Context, filter map[string]interface{}, limit, offset int) ([]map[string]interface{}, error) {
+	// Simplified implementation - returns empty for now
+	return []map[string]interface{}{}, nil
+}
+
+func (r *sqliteAuditLogRepo) Count(ctx context.Context, filter map[string]interface{}) (int64, error) {
+	var count int64
+	query := `SELECT COUNT(*) FROM audit_log`
+	err := r.db.QueryRowContext(ctx, query).Scan(&count)
+	return count, err
+}
+
+func (r *sqliteAuditLogRepo) PurgeOldEvents(ctx context.Context, retentionDays int) (int64, error) {
+	query := `DELETE FROM audit_log WHERE timestamp < datetime('now', '-` + fmt.Sprintf("%d", retentionDays) + ` days')`
+	result, err := r.db.ExecContext(ctx, query)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

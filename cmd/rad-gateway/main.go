@@ -13,6 +13,7 @@ import (
 	"radgateway/internal/a2a"
 	"radgateway/internal/admin"
 	"radgateway/internal/api"
+	"radgateway/internal/audit"
 	"radgateway/internal/auth"
 	"radgateway/internal/cache"
 	"radgateway/internal/config"
@@ -119,9 +120,20 @@ func main() {
 				userRepo = database.Users()
 			}
 		}
-		if database != nil {
+			if database != nil {
 			defer database.Close()
 		}
+	}
+
+	// Initialize audit logger (optional - for security logging)
+	var auditLogger *audit.Logger
+	if database != nil {
+		sqlDB := database.DB()
+		auditLogger = audit.NewLogger(sqlDB, audit.DefaultConfig())
+		log.Info("audit logging initialized")
+		_ = auditLogger // Will be used for security middleware
+	} else {
+		log.Warn("audit logging not available - no database connection")
 	}
 
 	// Initialize Redis cache (optional - for model card caching)

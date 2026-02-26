@@ -12,6 +12,7 @@ type Database interface {
 	// Connection management
 	Ping(ctx context.Context) error
 	Close() error
+	DB() *sql.DB // Returns underlying *sql.DB for audit logging
 
 	// Transaction support
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
@@ -34,6 +35,7 @@ type Database interface {
 	UsageRecords() UsageRecordRepository
 	TraceEvents() TraceEventRepository
 	ModelCards() ModelCardRepository
+	AuditLog() AuditLogRepository
 
 	// Migration support
 	RunMigrations() error
@@ -215,6 +217,21 @@ type ModelCardRepository interface {
 
 	// RestoreVersion restores a model card to a specific version.
 	RestoreVersion(ctx context.Context, modelCardID string, version int, restoredBy *string) error
+}
+
+// AuditLogRepository defines audit log data access operations.
+type AuditLogRepository interface {
+	// Log creates a new audit event.
+	Log(ctx context.Context, eventType string, severity string, actorType, actorID, actorName string, resourceType, resourceID string, action, result string, details map[string]interface{}) error
+
+	// Query retrieves audit events matching the filter.
+	Query(ctx context.Context, filter map[string]interface{}, limit, offset int) ([]map[string]interface{}, error)
+
+	// Count returns the count of events matching the filter.
+	Count(ctx context.Context, filter map[string]interface{}) (int64, error)
+
+	// PurgeOldEvents removes events older than retention days.
+	PurgeOldEvents(ctx context.Context, retentionDays int) (int64, error)
 }
 
 // UsageSummary holds aggregated usage statistics.

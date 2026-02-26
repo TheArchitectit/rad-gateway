@@ -37,6 +37,7 @@ type pgRepositories struct {
 	usageRecords *pgUsageRecordRepo
 	traceEvents  *pgTraceEventRepo
 	modelCards   *pgModelCardRepo
+	auditLog     *pgAuditLogRepo
 }
 
 // NewPostgres creates a new PostgreSQL database connection with retry logic.
@@ -123,6 +124,7 @@ func NewPostgres(config Config) (*PostgresDB, error) {
 		usageRecords: &pgUsageRecordRepo{db: db},
 		traceEvents:  &pgTraceEventRepo{db: db},
 		modelCards:   &pgModelCardRepo{db: db},
+		auditLog:     &pgAuditLogRepo{db: db},
 	}
 
 	return database, nil
@@ -171,6 +173,7 @@ func (p *PostgresDB) Quotas() QuotaRepository             { return p.repos.quota
 func (p *PostgresDB) UsageRecords() UsageRecordRepository { return p.repos.usageRecords }
 func (p *PostgresDB) TraceEvents() TraceEventRepository   { return p.repos.traceEvents }
 func (p *PostgresDB) ModelCards() ModelCardRepository     { return p.repos.modelCards }
+func (p *PostgresDB) AuditLog() AuditLogRepository         { return p.repos.auditLog }
 
 // DB returns the underlying *sql.DB for migrations and advanced operations.
 func (p *PostgresDB) DB() *sql.DB { return p.db }
@@ -1333,4 +1336,36 @@ func (r *pgModelCardRepo) createVersion(ctx context.Context, card *ModelCard, ch
 // generateUUID generates a new UUID (placeholder - use proper UUID library in production).
 func generateUUID() string {
 	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), time.Now().Unix())
+}
+
+// pgAuditLogRepo implements AuditLogRepository for PostgreSQL.
+type pgAuditLogRepo struct{ db *sql.DB }
+
+func (r *pgAuditLogRepo) Log(ctx context.Context, eventType string, severity string, actorType, actorID, actorName string, resourceType, resourceID string, action, result string, details map[string]interface{}) error {
+	detailsJSON, _ := json.Marshal(details)
+	query := `INSERT INTO audit_log (id, timestamp, type, severity, actor_type, actor_id, actor_name, resource_type, resource_id, action, result, details)
+		VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+	_, err := r.db.ExecContext(ctx, query, generateUUID(), eventType, severity, actorType, actorID, actorName, resourceType, resourceID, action, result, detailsJSON)
+	return err
+}
+
+func (r *pgAuditLogRepo) Query(ctx context.Context, filter map[string]interface{}, limit, offset int) ([]map[string]interface{}, error) {
+	// Simplified implementation - returns empty for now
+	return []map[string]interface{}{}, nil
+}
+
+func (r *pgAuditLogRepo) Count(ctx context.Context, filter map[string]interface{}) (int64, error) {
+	var count int64
+	query := `SELECT COUNT(*) FROM audit_log`
+	err := r.db.QueryRowContext(ctx, query).Scan(&count)
+	return count, err
+}
+
+func (r *pgAuditLogRepo) PurgeOldEvents(ctx context.Context, retentionDays int) (int64, error) {
+	query := `DELETE FROM audit_log WHERE timestamp < NOW() - INTERVAL '` + fmt.Sprintf("%d", retentionDays) + ` days'`
+	result, err := r.db.ExecContext(ctx, query)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
