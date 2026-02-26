@@ -1,0 +1,77 @@
+# RAD Gateway A2A - SecurityPolicy
+# OAuth 2.1, CORS, and JWT authorization
+
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: a2a-security-policy
+  namespace: gateway-system
+  labels:
+    app.kubernetes.io/name: a2a-security-policy
+    app.kubernetes.io/part-of: a2a-gateway
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: a2a-gateway
+
+  # CORS configuration
+  cors:
+    allowOrigins:
+      - "https://a2a.internal.corp"
+      - "https://agents.internal.corp"
+      - "https://mcp.internal.corp"
+    allowMethods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    allowHeaders:
+      - Authorization
+      - Content-Type
+      - X-Request-ID
+      - X-A2A-Protocol-Version
+      - X-SPIFFE-ID
+      - X-Client-ID
+      - Traceparent
+      - Tracestate
+    allowCredentials: true
+    maxAge: "86400s"
+    exposeHeaders:
+      - X-A2A-Validated
+      - X-Estimated-Tokens
+      - X-Gateway-Timestamp
+
+  # JWT/OAuth 2.1 Authorization
+  authorization:
+    type: JWT
+    jwt:
+      providers:
+        - name: oauth-provider
+          issuer: "https://auth.internal.corp"
+          audiences:
+            - "a2a-gateway"
+            - "radgateway-backend"
+          remoteJWKS:
+            uri: "https://auth.internal.corp/.well-known/jwks.json"
+            timeout: "5s"
+            cacheDuration: "1h"
+          claimToHeaders:
+            - claim: sub
+              header: X-User-ID
+            - claim: spiffe_id
+              header: X-SPIFFE-ID
+            - claim: workspace_id
+              header: X-Workspace-ID
+          forwardAccessToken: true
+
+  # mTLS configuration for backend connections
+  mTLS:
+    mode: STRICT
+    trustDomain: "internal.corp"
+    caRef:
+      group: ""
+      kind: Secret
+      name: spire-ca-bundle
+      namespace: spire

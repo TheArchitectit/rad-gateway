@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"fmt"
 	"net/http"
 	"os"
@@ -26,6 +27,9 @@ import (
 	"radgateway/internal/trace"
 	"radgateway/internal/usage"
 )
+
+//go:embed assets
+var assets embed.FS
 
 // a2aCacheAdapter adapts cache.TypedModelCardCache to a2a.Cache interface.
 type a2aCacheAdapter struct {

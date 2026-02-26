@@ -1,0 +1,41 @@
+# RAD Gateway A2A - Kustomize Deployment
+# Deploys all A2A Gateway components to test cluster
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Namespace for all resources
+namespace: radgateway
+
+# Resources to deploy
+resources:
+  # Phase 1: Infrastructure
+  - ../gateway
+  - ../kafka
+  - ../otel
+
+  # Backend deployment
+  - radgateway-backend.yaml
+
+# ConfigMapGenerator for application config
+configMapGenerator:
+  - name: radgateway-config
+    literals:
+      - DATABASE_URL=postgres://radgateway:password@postgres:5432/radgateway
+      - REDIS_URL=redis://redis:6379
+      - KAFKA_BROKERS=a2a-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092
+      - SPIFFE_TRUST_DOMAIN=internal.corp
+      - LOG_LEVEL=debug
+
+# SecretGenerator for sensitive data
+secretGenerator:
+  - name: radgateway-secrets
+    literals:
+      - API_KEY=dev-api-key-change-in-production
+      - JWT_SECRET=dev-jwt-secret-change-in-production
+
+# Images to use
+images:
+  - name: radgateway
+    newName: ghcr.io/thearchitectit/rad-gateway
+    newTag: latest

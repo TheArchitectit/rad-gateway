@@ -1,17 +1,17 @@
 {
   "/_not-found/page": "app/_not-found/page.js",
+  "/a2a/page": "app/a2a/page.js",
   "/api-keys/new/page": "app/api-keys/new/page.js",
   "/control-rooms/page": "app/control-rooms/page.js",
   "/api-keys/page": "app/api-keys/page.js",
   "/login/page": "app/login/page.js",
   "/mcp/page": "app/mcp/page.js",
   "/oauth/page": "app/oauth/page.js",
-  "/projects/new/page": "app/projects/new/page.js",
   "/page": "app/page.js",
+  "/projects/new/page": "app/projects/new/page.js",
   "/projects/page": "app/projects/page.js",
   "/providers/new/page": "app/providers/new/page.js",
   "/providers/page": "app/providers/page.js",
   "/reports/page": "app/reports/page.js",
-  "/usage/page": "app/usage/page.js",
-  "/a2a/page": "app/a2a/page.js"
+  "/usage/page": "app/usage/page.js"
 }

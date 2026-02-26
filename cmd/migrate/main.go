@@ -34,15 +34,15 @@
 package main
 import (
 	"context"
-        "database/sql"
+	"database/sql"
 	"embed"
 	"flag"
 	"fmt"
 	"os"
-	
 	"strconv"
 	"strings"
 	"time"
+
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 	"radgateway/internal/db"
@@ -501,6 +501,7 @@ func cmdVerify(ctx context.Context, cfg Config) int {
 func connect(cfg Config) (db.Database, *db.Migrator, error) {
 	// Parse database URL to determine driver
 	driver, dsn := parseDatabaseURL(cfg.DatabaseURL)
+
 	// Create database config
 	dbConfig := db.Config{
 		Driver: driver,

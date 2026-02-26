@@ -1,0 +1,79 @@
+# RAD Gateway A2A - ReferenceGrant
+# Allows cross-namespace routing from gateway-system to a2a-agents
+
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-gateway-to-agents
+  namespace: a2a-agents
+  labels:
+    app.kubernetes.io/name: allow-gateway-to-agents
+    app.kubernetes.io/part-of: a2a-gateway
+spec:
+  from:
+    # Allow HTTPRoutes from gateway-system to reference services in a2a-agents
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: gateway-system
+    # Allow BackendTrafficPolicy from gateway-system
+    - group: gateway.envoyproxy.io
+      kind: BackendTrafficPolicy
+      namespace: gateway-system
+    # Allow SecurityPolicy from gateway-system
+    - group: gateway.envoyproxy.io
+      kind: SecurityPolicy
+      namespace: gateway-system
+  to:
+    # Reference Services in a2a-agents namespace
+    - group: ""
+      kind: Service
+      name: radgateway-backend
+    # Reference Secrets for mTLS
+    - group: ""
+      kind: Secret
+      name: agent-credentials
+    # Reference ConfigMaps
+    - group: ""
+      kind: ConfigMap
+      name: agent-config
+
+---
+# ReferenceGrant for observability namespace
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-gateway-to-observability
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: a2a-gateway
+spec:
+  from:
+    - group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      namespace: gateway-system
+  to:
+    - group: ""
+      kind: Service
+      name: otel-collector
+    - group: ""
+      kind: Service
+      name: jaeger-collector
+
+---
+# ReferenceGrant for SPIRE namespace
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-gateway-to-spire
+  namespace: spire
+  labels:
+    app.kubernetes.io/part-of: a2a-gateway
+spec:
+  from:
+    - group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      namespace: gateway-system
+  to:
+    - group: ""
+      kind: Secret
+      name: spire-ca-bundle
