@@ -91,6 +91,15 @@ type TaskList struct {
 	Offset int    `json:"offset"`
 }
 
+// TaskFilter provides filtering options for listing tasks.
+type TaskFilter struct {
+	WorkspaceID string
+	SessionID   string
+	Status      TaskState
+	Limit       int
+	Offset      int
+}
+
 type SendTaskRequest struct {
 	SessionID string          `json:"sessionId"`
 	Message   Message         `json:"message"`
@@ -128,14 +137,13 @@ const (
 	TaskEventTypeFailed       TaskEventType = "failed"
 )
 
+// TaskStore defines the interface for task persistence operations.
 type TaskStore interface {
 	CreateTask(ctx context.Context, task *Task) error
 	GetTask(ctx context.Context, id string) (*Task, error)
 	UpdateTask(ctx context.Context, task *Task) error
 	DeleteTask(ctx context.Context, id string) error
-	ListTasks(ctx context.Context, workspaceID string, limit, offset int) (*TaskList, error)
-	ListTasksBySession(ctx context.Context, sessionID string) ([]Task, error)
-	ListTasksByStatus(ctx context.Context, status TaskState, limit int) ([]Task, error)
+	ListTasks(ctx context.Context, filter TaskFilter) ([]*Task, error)
 }
 
 var (

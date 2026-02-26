@@ -159,18 +159,60 @@ func (s *PostgresTaskStore) DeleteTask(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *PostgresTaskStore) ListTasks(ctx context.Context, workspaceID string, limit, offset int) (*TaskList, error) {
-	var tasks []Task
+func (s *PostgresTaskStore) ListTasks(ctx context.Context, filter TaskFilter) ([]*Task, error) {
+	var tasks []*Task
+	var args []interface{}
+	var conditions []string
+	argIdx := 1
 
 	query := `
 		SELECT id, status, session_id, message, artifacts, metadata, created_at, updated_at, expires_at, parent_id, workspace_id, assigned_agent_id
 		FROM a2a_tasks
-		WHERE workspace_id = $1
-		ORDER BY created_at DESC
-		LIMIT $2 OFFSET $3
+		WHERE 1=1
 	`
 
-	rows, err := s.db.QueryContext(ctx, query, workspaceID, limit, offset)
+	if filter.WorkspaceID != "" {
+		conditions = append(conditions, fmt.Sprintf(" AND workspace_id = $%d", argIdx))
+		args = append(args, filter.WorkspaceID)
+		argIdx++
+	}
+
+	if filter.SessionID != "" {
+		conditions = append(conditions, fmt.Sprintf(" AND session_id = $%d", argIdx))
+		args = append(args, filter.SessionID)
+		argIdx++
+	}
+
+	if filter.Status != "" {
+		conditions = append(conditions, fmt.Sprintf(" AND status = $%d", argIdx))
+		args = append(args, filter.Status)
+		argIdx++
+	}
+
+	for _, cond := range conditions {
+		query += cond
+	}
+
+	query += " ORDER BY created_at DESC"
+
+	// Apply limit with default
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+	query += fmt.Sprintf(" LIMIT $%d", argIdx)
+	args = append(args, limit)
+	argIdx++
+
+	// Apply offset
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	query += fmt.Sprintf(" OFFSET $%d", argIdx)
+	args = append(args, offset)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
 	}
@@ -206,124 +248,11 @@ func (s *PostgresTaskStore) ListTasks(ctx context.Context, workspaceID string, l
 			return nil, fmt.Errorf("unmarshal artifacts: %w", err)
 		}
 
-		tasks = append(tasks, task)
-	}
-
-	var total int
-	err = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM a2a_tasks WHERE workspace_id = $1", workspaceID).Scan(&total)
-	if err != nil {
-		return nil, fmt.Errorf("count tasks: %w", err)
-	}
-
-	return &TaskList{
-		Items:  tasks,
-		Total:  total,
-		Limit:  limit,
-		Offset: offset,
-	}, nil
-}
-
-func (s *PostgresTaskStore) ListTasksBySession(ctx context.Context, sessionID string) ([]Task, error) {
-	var tasks []Task
-
-	query := `
-		SELECT id, status, session_id, message, artifacts, metadata, created_at, updated_at, expires_at, parent_id, workspace_id, assigned_agent_id
-		FROM a2a_tasks
-		WHERE session_id = $1
-		ORDER BY created_at ASC
-	`
-
-	rows, err := s.db.QueryContext(ctx, query, sessionID)
-	if err != nil {
-		return nil, fmt.Errorf("list tasks by session: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var task Task
-		var messageJSON, artifactsJSON []byte
-
-		err := rows.Scan(
-			&task.ID,
-			&task.Status,
-			&task.SessionID,
-			&messageJSON,
-			&artifactsJSON,
-			&task.Metadata,
-			&task.CreatedAt,
-			&task.UpdatedAt,
-			&task.ExpiresAt,
-			&task.ParentID,
-			&task.WorkspaceID,
-			&task.AssignedAgentID,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("scan task: %w", err)
-		}
-
-		if err := json.Unmarshal(messageJSON, &task.Message); err != nil {
-			return nil, fmt.Errorf("unmarshal message: %w", err)
-		}
-
-		if err := json.Unmarshal(artifactsJSON, &task.Artifacts); err != nil {
-			return nil, fmt.Errorf("unmarshal artifacts: %w", err)
-		}
-
-		tasks = append(tasks, task)
+		tasks = append(tasks, &task)
 	}
 
 	return tasks, nil
 }
 
-func (s *PostgresTaskStore) ListTasksByStatus(ctx context.Context, status TaskState, limit int) ([]Task, error) {
-	var tasks []Task
-
-	query := `
-		SELECT id, status, session_id, message, artifacts, metadata, created_at, updated_at, expires_at, parent_id, workspace_id, assigned_agent_id
-		FROM a2a_tasks
-		WHERE status = $1
-		ORDER BY created_at ASC
-		LIMIT $2
-	`
-
-	rows, err := s.db.QueryContext(ctx, query, status, limit)
-	if err != nil {
-		return nil, fmt.Errorf("list tasks by status: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var task Task
-		var messageJSON, artifactsJSON []byte
-
-		err := rows.Scan(
-			&task.ID,
-			&task.Status,
-			&task.SessionID,
-			&messageJSON,
-			&artifactsJSON,
-			&task.Metadata,
-			&task.CreatedAt,
-			&task.UpdatedAt,
-			&task.ExpiresAt,
-			&task.ParentID,
-			&task.WorkspaceID,
-			&task.AssignedAgentID,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("scan task: %w", err)
-		}
-
-		if err := json.Unmarshal(messageJSON, &task.Message); err != nil {
-			return nil, fmt.Errorf("unmarshal message: %w", err)
-		}
-
-		if err := json.Unmarshal(artifactsJSON, &task.Artifacts); err != nil {
-			return nil, fmt.Errorf("unmarshal artifacts: %w", err)
-		}
-
-		tasks = append(tasks, task)
-	}
-
-	return tasks, nil
-}
+// Ensure PostgresTaskStore implements TaskStore interface.
+var _ TaskStore = (*PostgresTaskStore)(nil)
