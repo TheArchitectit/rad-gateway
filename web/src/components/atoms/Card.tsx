@@ -5,7 +5,7 @@ interface CardProps {
   title?: string;
   header?: React.ReactNode;
   footer?: React.ReactNode;
-  className?: string;
+  className?: string | undefined;
   shadow?: 'sm' | 'md' | 'lg' | 'none';
 }
 
