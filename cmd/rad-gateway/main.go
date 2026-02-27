@@ -340,6 +340,18 @@ func main() {
 	handler = middleware.WithSecurityHeaders(handler) // Add security headers
 	handler = middleware.WithCORS(handler)
 
+	// Add rate limiting middleware
+	rateLimiter := middleware.NewRateLimiter(middleware.DefaultRateLimitConfig())
+	defer rateLimiter.Stop()
+	handler = rateLimiter.Handler(handler)
+	log.Info("rate limiting middleware enabled")
+
+	// Add brute force protection for auth endpoints
+	bruteForceProtector := middleware.NewBruteForceProtector(middleware.DefaultBruteForceConfig())
+	defer bruteForceProtector.Stop()
+	handler = bruteForceProtector.Middleware(handler)
+	log.Info("brute force protection middleware enabled")
+
 	// Add audit logging middleware if available
 	if auditLogger != nil {
 		auditMiddleware := audit.NewMiddleware(auditLogger)

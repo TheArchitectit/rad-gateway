@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -64,6 +65,32 @@ func DefaultCORSConfig() CORSConfig {
 		AllowCredentials: true,
 		MaxAge:           86400, // 24 hours
 	}
+}
+
+// LoadCORSConfig loads CORS configuration from environment.
+// Uses strict config in production mode, default config otherwise.
+func LoadCORSConfig() CORSConfig {
+	// Load allowed origins from environment
+	var origins []string
+	if o := os.Getenv("RAD_CORS_ORIGINS"); o != "" {
+		origins = strings.Split(o, ",")
+		for i, origin := range origins {
+			origins[i] = strings.TrimSpace(origin)
+		}
+	}
+
+	// Check for production mode
+	if os.Getenv("RAD_ENV") == "production" || os.Getenv("RAD_CORS_STRICT") == "true" {
+		return ProductionCORSConfig(origins)
+	}
+
+	// Development mode - use default config but allow overrides
+	config := DefaultCORSConfig()
+	if len(origins) > 0 {
+		config.AllowedOrigins = origins
+	}
+
+	return config
 }
 
 // CORS is the CORS middleware handler.
