@@ -11,8 +11,8 @@
   "/providers/new/page": "app/providers/new/page.js",
   "/projects/page": "app/projects/page.js",
   "/providers/page": "app/providers/page.js",
-  "/usage/page": "app/usage/page.js",
   "/reports/page": "app/reports/page.js",
+  "/usage/page": "app/usage/page.js",
   "/control-rooms/[id]/page": "app/control-rooms/[id]/page.js",
   "/a2a/page": "app/a2a/page.js"
 }

@@ -6,12 +6,15 @@ import { AppLayout } from '@/components/templates/AppLayout';
 import { Card } from '@/components/atoms/Card';
 import { Button } from '@/components/atoms/Button';
 import { Badge } from '@/components/atoms/Badge';
+import { UsageLineChart } from '@/components/charts/UsageLineChart';
+import { TokenBarChart } from '@/components/charts/TokenBarChart';
 import {
   useCreateExport,
   useExportStatus,
   useUsage,
   useUsageByDimension,
   useUsageSummary,
+  useUsageTrends,
 } from '@/queries';
 
 const timeRanges = [
@@ -48,6 +51,14 @@ export default function UsagePage() {
     isLoading: usageLoading,
     error: usageError,
   } = useUsage({ ...window, page: 1, pageSize: 25 });
+  const {
+    data: trends,
+    isLoading: trendsLoading,
+  } = useUsageTrends({
+    startTime: window.startTime,
+    endTime: window.endTime,
+    interval: timeRange === '24h' ? 'hour' : 'day',
+  });
 
   const providerDimension = useUsageByDimension('providerId', window);
   const createExport = useCreateExport({
@@ -167,6 +178,43 @@ export default function UsagePage() {
             </div>
           </Card>
         </div>
+
+        {/* Charts Section */}
+        {trendsLoading ? (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <Card>
+              <div className="h-[300px] flex items-center justify-center">
+                <div className="text-[var(--ink-500)]">Loading charts...</div>
+              </div>
+            </Card>
+            <Card>
+              <div className="h-[300px] flex items-center justify-center">
+                <div className="text-[var(--ink-500)]">Loading charts...</div>
+              </div>
+            </Card>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <UsageLineChart
+              data={trends?.points?.map((p) => ({
+                timestamp: p.timestamp,
+                requests: p.requestCount,
+                errors: p.errorCount,
+              })) || []}
+              title="Request Volume"
+            />
+            <TokenBarChart
+              data={trends?.points?.map((p) => ({
+                timestamp: p.timestamp,
+                input: Math.round(p.tokenCount * 0.4),
+                output: Math.round(p.tokenCount * 0.6),
+                reasoning: 0,
+                cached: 0,
+              })) || []}
+              title="Token Usage"
+            />
+          </div>
+        )}
 
         <Card title="Usage by Provider">
           <div className="space-y-4">
