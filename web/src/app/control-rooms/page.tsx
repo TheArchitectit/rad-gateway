@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, AlertCircle, Plus, Server, Trash2, Zap } from 'lucide-react';
+import Link from 'next/link';
+import { Activity, AlertCircle, ArrowRight, Plus, Server, Trash2, Zap } from 'lucide-react';
 import { AppLayout } from '@/components/templates/AppLayout';
 import { Card } from '@/components/atoms/Card';
 import { Button } from '@/components/atoms/Button';
