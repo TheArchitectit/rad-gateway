@@ -310,6 +310,13 @@ func main() {
 	handler = middleware.WithSecurityHeaders(handler) // Add security headers
 	handler = middleware.WithCORS(handler)
 
+	// Add audit logging middleware if available
+	if auditLogger != nil {
+		auditMiddleware := audit.NewMiddleware(auditLogger)
+		handler = auditMiddleware.Handler(handler)
+		log.Info("audit logging middleware enabled")
+	}
+
 	log.Info("rad-gateway starting", "addr", cfg.ListenAddr)
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,
