@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"embed"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"radgateway/internal/api"
 	"radgateway/internal/audit"
 	"radgateway/internal/auth"
+	"radgateway/internal/auth/cedar"
 	"radgateway/internal/cache"
 	"radgateway/internal/config"
 	"radgateway/internal/core"
@@ -135,6 +137,19 @@ func main() {
 		middleware.SetAuditLogger(&auditLoggerAdapter{logger: auditLogger})
 	} else {
 		log.Warn("audit logging not available - no database connection")
+	}
+
+	// Initialize Cedar policy engine (optional - for fine-grained authorization)
+	var cedarPDP *cedar.PolicyDecisionPoint
+	if cedarEnabled := getenv("RAD_CEDAR_ENABLED", "false"); cedarEnabled == "true" {
+		cedarPolicyPath := getenv("RAD_CEDAR_POLICY_PATH", "./policies/cedar/agent-authz.cedar")
+		var err error
+		cedarPDP, err = cedar.NewPDP(cedarPolicyPath)
+		if err != nil {
+			log.Warn("Cedar policy engine initialization failed", "error", err.Error())
+		} else {
+			log.Info("Cedar policy engine initialized", "policy_path", cedarPolicyPath)
+		}
 	}
 
 	// Initialize Redis cache (optional - for model card caching)
@@ -301,6 +316,11 @@ func main() {
 	} else {
 		log.Warn("auditLogger is nil, API endpoints not wrapped")
 	}
+	// Wrap with Cedar authorization if available
+	if cedarPDP != nil {
+		apiHandler = middleware.WithCedarAuthorization(cedarPDP, "invoke")(apiHandler)
+		log.Info("API endpoints wrapped with Cedar authorization")
+	}
 	combinedMux.Handle("/v1/", apiHandler)
 	combinedMux.Handle("/a2a/", apiHandler)
 	combinedMux.Handle("/mcp/", apiHandler)
@@ -327,17 +347,47 @@ func main() {
 		log.Info("audit logging middleware enabled")
 	}
 
-	log.Info("rad-gateway starting", "addr", cfg.ListenAddr)
+	// Load TLS configuration
+	mtlsConfig := middleware.LoadMTLSConfig()
+	var tlsConfig *tls.Config
+	if mtlsConfig.Enabled {
+		var err error
+		tlsConfig, err = mtlsConfig.TLSConfig()
+		if err != nil {
+			log.Error("failed to load TLS configuration", "error", err.Error())
+			return
+		}
+
+		// Wrap handler with mTLS middleware for additional validation
+		mtlsMiddleware := middleware.NewMTLSMiddleware(mtlsConfig)
+		handler = mtlsMiddleware.Handler(handler)
+
+		log.Info("TLS/mTLS enabled",
+			"cert_file", mtlsConfig.CertFile,
+			"key_file", mtlsConfig.KeyFile,
+			"ca_file", mtlsConfig.CAFile,
+			"client_auth", mtlsConfig.ClientAuth,
+		)
+	}
+
+	log.Info("rad-gateway starting", "addr", cfg.ListenAddr, "tls_enabled", mtlsConfig.Enabled)
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           handler,
+		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
 
-	if err := server.ListenAndServe(); err != nil {
+	var err error
+	if tlsConfig != nil {
+		err = server.ListenAndServeTLS("", "")
+	} else {
+		err = server.ListenAndServe()
+	}
+	if err != nil {
 		log.Error("server failed to start", "error", err.Error())
 		return
 	}
