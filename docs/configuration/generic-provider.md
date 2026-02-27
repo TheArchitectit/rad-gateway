@@ -17,11 +17,12 @@ The generic adapter supports the OpenAI API format for chat completions and embe
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `GENERIC_API_KEY` | No | - | API key for authentication |
 | `GENERIC_BASE_URL` | Yes | - | Base URL for the API (e.g., `https://api.example.com/v1`) |
+| `GENERIC_API_KEY` | Yes | - | API key for authentication |
 | `GENERIC_TIMEOUT` | No | `60s` | Request timeout duration |
 | `GENERIC_MAX_RETRIES` | No | `3` | Maximum number of retry attempts |
 | `GENERIC_RETRY_DELAY` | No | `500ms` | Initial retry delay (exponential backoff) |
+| `GENERIC_CUSTOM_HEADERS` | No | - | JSON object of additional headers (e.g., `{"X-Custom":"value"}`) |
 | `GENERIC_AUTH_TYPE` | No | `bearer` | Authentication type: `bearer`, `api-key`, or `custom` |
 | `GENERIC_AUTH_HEADER` | No | `Authorization` | Header name for authentication |
 | `GENERIC_AUTH_PREFIX` | No | `Bearer ` | Prefix for auth token (include trailing space) |
@@ -83,6 +84,27 @@ export GENERIC_API_KEY="your-key"
 ```
 
 Results in header: `X-Custom-Auth: ApiKey your-key`
+
+### Custom Headers
+
+Additional headers can be configured via environment variable (JSON format):
+
+```bash
+export GENERIC_CUSTOM_HEADERS='{"X-Request-ID":"12345","X-Environment":"production"}'
+```
+
+Or programmatically:
+
+```go
+adapter := generic.NewAdapter(
+    baseURL,
+    apiKey,
+    generic.WithHeaders(map[string]string{
+        "X-Request-ID": "12345",
+        "X-Environment": "production",
+    }),
+)
+```
 
 ## Supported APIs
 
