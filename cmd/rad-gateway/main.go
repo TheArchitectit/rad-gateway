@@ -116,7 +116,7 @@ func main() {
 			if err := database.RunMigrations(); err != nil {
 				log.Warn("database migrations failed", "error", err.Error())
 			} else {
-				log.Info("database connected", "driver", dbDriverUsed)
+				log.Info("database connected", "driver", dbDriverUsed, "db_var_addr", fmt.Sprintf("%p", &dbDriverUsed))
 				userRepo = database.Users()
 			}
 		}
@@ -279,6 +279,7 @@ func main() {
 		}
 
 		response := fmt.Sprintf(`{"status":"ok","database":"%s","driver":"%s"}`, dbStatus, dbDriverUsed)
+		log.Info("health check", "dbDriverUsed", dbDriverUsed, "db_var_addr", fmt.Sprintf("%p", &dbDriverUsed))
 		w.Write([]byte(response))
 	}))
 
