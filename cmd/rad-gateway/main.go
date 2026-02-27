@@ -291,6 +291,11 @@ func main() {
 
 	// API endpoints require API key authentication (except health)
 	apiHandler := apiKeyAuth.Require(apiMux)
+	// Wrap with audit logging if available
+	if auditLogger != nil {
+		auditMiddleware := audit.NewMiddleware(auditLogger)
+		apiHandler = auditMiddleware.AuthMiddleware(apiHandler)
+	}
 	combinedMux.Handle("/v1/", apiHandler)
 	combinedMux.Handle("/a2a/", apiHandler)
 	combinedMux.Handle("/mcp/", apiHandler)
