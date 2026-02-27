@@ -57,13 +57,18 @@ func (a *Authenticator) Require(next http.Handler) http.Handler {
 			a.log.Warn("authentication failed: missing api key", "path", r.URL.Path, "remote_addr", r.RemoteAddr)
 			// Log to audit log if available
 			if globalAuditLogger != nil {
-				// Use nil for actor/resource since we can't import audit package
-				globalAuditLogger.Log(r.Context(), "auth:failure", nil, nil,
+				a.log.Info("logging auth failure to audit log", "path", r.URL.Path)
+				err := globalAuditLogger.Log(r.Context(), "auth:failure", nil, nil,
 					r.Method, "failure", map[string]interface{}{
 						"reason":      "missing_api_key",
 						"path":        r.URL.Path,
 						"remote_addr": r.RemoteAddr,
 					})
+				if err != nil {
+					a.log.Error("failed to write audit log", "error", err)
+				}
+			} else {
+				a.log.Info("globalAuditLogger is nil - audit logging disabled")
 			}
 			http.Error(w, `{"error":{"message":"missing api key","code":401}}`, http.StatusUnauthorized)
 			return

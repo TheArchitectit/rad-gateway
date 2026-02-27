@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/google/uuid"
@@ -82,6 +83,16 @@ func (l *Logger) LogWithRequest(ctx context.Context, eventType EventType, actor 
 	return l.Store(ctx, event)
 }
 
+// stripPort removes port from IP address for PostgreSQL inet type
+func stripPort(ipStr string) string {
+	host, _, err := net.SplitHostPort(ipStr)
+	if err != nil {
+		// If SplitHostPort fails, assume it's already a plain IP
+		return ipStr
+	}
+	return host
+}
+
 // Store persists an audit event to the database.
 func (l *Logger) Store(ctx context.Context, event Event) error {
 	detailsJSON, err := json.Marshal(event.Details)
@@ -113,7 +124,7 @@ func (l *Logger) Store(ctx context.Context, event Event) error {
 		event.Actor.ID,
 		event.Actor.Name,
 		event.Actor.Role,
-		event.Actor.IP,
+		stripPort(event.Actor.IP),
 		event.Actor.UserAgent,
 		event.Resource.Type,
 		event.Resource.ID,
