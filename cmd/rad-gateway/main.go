@@ -131,7 +131,8 @@ func main() {
 		sqlDB := database.DB()
 		auditLogger = audit.NewLogger(sqlDB, audit.DefaultConfig())
 		log.Info("audit logging initialized")
-		_ = auditLogger // Will be used for security middleware
+		// Set global audit logger for auth middleware using adapter
+		middleware.SetAuditLogger(&auditLoggerAdapter{logger: auditLogger})
 	} else {
 		log.Warn("audit logging not available - no database connection")
 	}
@@ -295,6 +296,9 @@ func main() {
 	if auditLogger != nil {
 		auditMiddleware := audit.NewMiddleware(auditLogger)
 		apiHandler = auditMiddleware.AuthMiddleware(apiHandler)
+		log.Info("API endpoints wrapped with audit AuthMiddleware")
+	} else {
+		log.Warn("auditLogger is nil, API endpoints not wrapped")
 	}
 	combinedMux.Handle("/v1/", apiHandler)
 	combinedMux.Handle("/a2a/", apiHandler)
@@ -343,4 +347,21 @@ func getenv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// auditLoggerAdapter adapts *audit.Logger to middleware.AuditLogger interface
+type auditLoggerAdapter struct {
+	logger *audit.Logger
+}
+
+func (a *auditLoggerAdapter) Log(ctx context.Context, eventType string, actor, resource interface{}, action, result string, details map[string]interface{}) error {
+	// Call the underlying audit logger - actor/resource are ignored here to avoid import cycle
+	// The audit logger will be called directly from middleware with the event details
+	return a.logger.Store(ctx, audit.Event{
+		Type:      audit.EventType(eventType),
+		Action:    action,
+		Result:    result,
+		Details:   details,
+		Timestamp: time.Now().UTC(),
+	})
 }

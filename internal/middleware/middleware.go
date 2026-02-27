@@ -38,11 +38,33 @@ func NewAuthenticator(keys map[string]string) *Authenticator {
 	}
 }
 
+// AuditLogger interface matches audit.Logger.Log signature (avoids import cycle)
+type AuditLogger interface {
+	Log(ctx context.Context, eventType string, actor interface{}, resource interface{}, action, result string, details map[string]interface{}) error
+}
+
+var globalAuditLogger AuditLogger
+
+// SetAuditLogger sets the global audit logger for auth events
+func SetAuditLogger(logger AuditLogger) {
+	globalAuditLogger = logger
+}
+
 func (a *Authenticator) Require(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		secret := extractAPIKey(r)
 		if secret == "" {
 			a.log.Warn("authentication failed: missing api key", "path", r.URL.Path, "remote_addr", r.RemoteAddr)
+			// Log to audit log if available
+			if globalAuditLogger != nil {
+				// Use nil for actor/resource since we can't import audit package
+				globalAuditLogger.Log(r.Context(), "auth:failure", nil, nil,
+					r.Method, "failure", map[string]interface{}{
+						"reason":      "missing_api_key",
+						"path":        r.URL.Path,
+						"remote_addr": r.RemoteAddr,
+					})
+			}
 			http.Error(w, `{"error":{"message":"missing api key","code":401}}`, http.StatusUnauthorized)
 			return
 		}
@@ -56,6 +78,15 @@ func (a *Authenticator) Require(next http.Handler) http.Handler {
 		}
 		if name == "" {
 			a.log.Warn("authentication failed: invalid api key", "path", r.URL.Path, "remote_addr", r.RemoteAddr)
+			// Log to audit log if available
+			if globalAuditLogger != nil {
+				globalAuditLogger.Log(r.Context(), "auth:failure", nil, nil,
+					r.Method, "failure", map[string]interface{}{
+						"reason":      "invalid_api_key",
+						"path":        r.URL.Path,
+						"remote_addr": r.RemoteAddr,
+					})
+			}
 			http.Error(w, `{"error":{"message":"invalid api key","code":401}}`, http.StatusUnauthorized)
 			return
 		}
