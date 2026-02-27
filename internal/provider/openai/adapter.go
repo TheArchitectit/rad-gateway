@@ -230,6 +230,14 @@ func (a *Adapter) executeNonStreaming(ctx context.Context, req OpenAIRequest) (m
 		return models.ProviderResult{}, err
 	}
 
+	// Calculate cost for the request
+	cost, err := CalculateCost(req.Model, result.Usage.PromptTokens, result.Usage.CompletionTokens)
+	if err != nil {
+		a.log.Warn("openai: failed to calculate cost", "model", req.Model, "error", err.Error())
+		cost = 0
+	}
+	result.Usage.CostTotal = cost
+
 	return models.ProviderResult{
 		Model:    req.Model,
 		Provider: a.Name(),
@@ -270,6 +278,12 @@ func (a *Adapter) executeStreaming(ctx context.Context, req OpenAIRequest) (mode
 	// Usage tracking for streaming
 	var usageMu sync.Mutex
 	usage := models.Usage{}
+
+	// Estimate prompt tokens from request messages
+	for _, msg := range req.Messages {
+		usage.PromptTokens += len(msg.Content) / 4 // Rough estimate: ~4 chars per token
+		usage.TotalTokens += len(msg.Content) / 4
+	}
 
 	// Process the stream in a goroutine
 	go func() {
@@ -336,7 +350,7 @@ func (a *Adapter) executeStreaming(ctx context.Context, req OpenAIRequest) (mode
 		Provider: a.Name(),
 		Status:   "success",
 		Usage:    usage,
-		Payload:  &StreamingResponse{Reader: pr, usage: &usage, mu: &usageMu},
+		Payload:  &StreamingResponse{Reader: pr, usage: &usage, model: req.Model, mu: &usageMu},
 	}, nil
 }
 
@@ -404,6 +418,9 @@ func (a *Adapter) executeEmbeddings(ctx context.Context, req models.ProviderRequ
 		}
 	}
 
+	// Calculate cost for embeddings (only input tokens)
+	cost, _ := CalculateCost(model, result.Usage.PromptTokens, 0)
+
 	return models.ProviderResult{
 		Model:    model,
 		Provider: a.Name(),
@@ -412,6 +429,7 @@ func (a *Adapter) executeEmbeddings(ctx context.Context, req models.ProviderRequ
 			PromptTokens:     result.Usage.PromptTokens,
 			CompletionTokens: 0,
 			TotalTokens:      result.Usage.TotalTokens,
+			CostTotal:        cost,
 		},
 		Payload: models.EmbeddingsResponse{
 			Object: result.Object,
@@ -421,6 +439,7 @@ func (a *Adapter) executeEmbeddings(ctx context.Context, req models.ProviderRequ
 				PromptTokens:     result.Usage.PromptTokens,
 				CompletionTokens: 0,
 				TotalTokens:      result.Usage.TotalTokens,
+				CostTotal:        cost,
 			},
 		},
 	}, nil
@@ -451,6 +470,7 @@ type StreamingResponse struct {
 	Reader io.Reader
 	usage  *models.Usage
 	mu     *sync.Mutex
+	model  string
 }
 
 // Read implements io.Reader for streaming responses.
@@ -471,4 +491,12 @@ func (s *StreamingResponse) Close() error {
 		return closer.Close()
 	}
 	return nil
+}
+
+// Cost returns the calculated cost for the stream usage.
+func (s *StreamingResponse) Cost() float64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cost, _ := CalculateCost(s.model, s.usage.PromptTokens, s.usage.CompletionTokens)
+	return cost
 }

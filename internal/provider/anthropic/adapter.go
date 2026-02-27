@@ -243,6 +243,14 @@ func (a *Adapter) executeNonStreaming(ctx context.Context, req AnthropicRequest)
 		return models.ProviderResult{}, err
 	}
 
+	// Calculate cost for the request
+	cost, err := CalculateCost(req.Model, result.Usage.PromptTokens, result.Usage.CompletionTokens)
+	if err != nil {
+		a.log.Warn("anthropic: failed to calculate cost", "model", req.Model, "error", err.Error())
+		cost = 0
+	}
+	result.Usage.CostTotal = cost
+
 	return models.ProviderResult{
 		Model:    req.Model,
 		Provider: a.Name(),
@@ -364,7 +372,7 @@ func (a *Adapter) executeStreaming(ctx context.Context, req AnthropicRequest) (m
 		Provider: a.Name(),
 		Status:   "success",
 		Usage:    usage,
-		Payload:  &StreamingResponse{Reader: pr, usage: &usage, mu: &usageMu},
+		Payload:  &StreamingResponse{Reader: pr, usage: &usage, model: req.Model, mu: &usageMu},
 	}, nil
 }
 
@@ -392,6 +400,7 @@ type StreamingResponse struct {
 	Reader io.Reader
 	usage  *models.Usage
 	mu     *sync.Mutex
+	model  string
 }
 
 // Read implements io.Reader for streaming responses.
@@ -412,4 +421,12 @@ func (s *StreamingResponse) Close() error {
 		return closer.Close()
 	}
 	return nil
+}
+
+// Cost returns the calculated cost for the stream usage.
+func (s *StreamingResponse) Cost() float64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cost, _ := CalculateCost(s.model, s.usage.PromptTokens, s.usage.CompletionTokens)
+	return cost
 }
