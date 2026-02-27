@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Responsive design - Sprint 6.3 */
+@import '../styles/responsive.css';
+
+/* Accessibility - Sprint 6.3 */
+@import '../styles/accessibility.css';
+
 :root {
   --font-display: 'Cinzel', serif;
   --font-body: 'Source Sans 3', sans-serif;

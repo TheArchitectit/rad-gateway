@@ -1,0 +1,117 @@
+/**
+ * Responsive Design Styles
+ * Sprint 6.3: Mobile Responsive Pass
+ */
+
+/* Mobile-first responsive utilities */
+
+/* Container adjustments */
+@media (max-width: 640px) {
+  .ui-container {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  /* Stack form layouts */
+  .ui-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Full-width buttons on mobile */
+  .ui-button-full-mobile {
+    width: 100%;
+  }
+
+  /* Adjust card padding */
+  .ui-card {
+    padding: 1rem;
+  }
+
+  /* Stack table actions */
+  .ui-table-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  /* Hide less important columns in DataTable */
+  .ui-table-col-hide-mobile {
+    display: none;
+  }
+}
+
+/* Tablet adjustments */
+@media (max-width: 1024px) {
+  .ui-sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  .ui-sidebar.open {
+    transform: translateX(0);
+  }
+
+  .ui-sidebar-overlay {
+    display: block;
+  }
+
+  /* Adjust chart heights */
+  .ui-chart-container {
+    height: 250px;
+  }
+
+  /* Grid adjustments */
+  .ui-grid-responsive {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Touch-friendly interactions */
+@media (hover: none) {
+  .ui-button:hover {
+    transform: none;
+  }
+
+  .ui-row-hover:hover {
+    background-color: transparent;
+  }
+
+  /* Larger touch targets */
+  .ui-touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Print styles */
+@media print {
+  .ui-sidebar,
+  .ui-header-actions,
+  .ui-no-print {
+    display: none !important;
+  }
+
+  .ui-print-full {
+    width: 100% !important;
+    margin: 0 !important;
+  }
+}
+
+/* Safe area insets for notched devices */
+@supports (padding: max(0px)) {
+  .ui-safe-area {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
