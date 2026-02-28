@@ -1,0 +1,23 @@
+# Dockerfile for binary-only deployment
+# Usage: Copy rad-gateway binary to same directory and build
+
+FROM alpine:latest
+
+# Install ca-certificates for HTTPS calls to providers
+RUN apk add --no-cache ca-certificates
+
+# Create non-root user
+RUN adduser -D -s /bin/false radgateway
+
+# Copy binary
+COPY rad-gateway /usr/local/bin/rad-gateway
+RUN chmod +x /usr/local/bin/rad-gateway
+
+# Expose port
+EXPOSE 8090
+
+# Run as non-root
+USER radgateway
+
+# Start application
+CMD ["/usr/local/bin/rad-gateway"]
