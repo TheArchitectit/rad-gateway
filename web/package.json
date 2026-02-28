@@ -18,8 +18,10 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.0",
+    "@radix-ui/react-dialog": "^1.1.15",
     "@tanstack/react-query": "^5.0.0",
     "@tanstack/react-table": "^8.21.3",
+    "class-variance-authority": "^0.7.1",
     "lucide-react": "^0.575.0",
     "next": "^14.0.0",
     "react": "^18.2.0",

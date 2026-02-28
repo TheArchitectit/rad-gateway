@@ -260,7 +260,7 @@ describe('ProtectedRoute', () => {
         <ProtectedRoute requiredPermissions={[
           { resource: 'providers', action: 'read' },
           { resource: 'providers', action: 'delete' },
-        ]]}>
+        ]}>
           <div>Content</div>
         </ProtectedRoute>
       );

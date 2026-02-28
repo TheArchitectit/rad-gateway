@@ -1,5 +1,9 @@
 {
   "dependencies": {
     "lucide-react": "^0.575.0"
+  },
+  "devDependencies": {
+    "@radix-ui/react-slot": "^1.2.4",
+    "@testing-library/user-event": "^14.6.1"
   }
 }

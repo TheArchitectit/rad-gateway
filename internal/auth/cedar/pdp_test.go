@@ -1,19 +1,15 @@
 package cedar
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestPDP_Authorize(t *testing.T) {
 	// Note: This test requires the cedar-policy library
 	// In production, policies would be loaded from files
 	t.Run("trusted agent can submit task", func(t *testing.T) {
-		ctx := context.Background()
-
 		// Skip if policy file not available
 		req := AuthorizationRequest{
 			Principal: "logistics-optimizer",

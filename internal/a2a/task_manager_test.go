@@ -2,6 +2,7 @@ package a2a
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -130,7 +131,7 @@ func TestTaskManager_CreateTask(t *testing.T) {
 			},
 			wantErr: false,
 			checkFn: func(t *testing.T, task *Task) {
-				assert.Equal(t, []byte(`{"key":"value"}`), task.Metadata)
+				assert.Equal(t, json.RawMessage(`{"key":"value"}`), task.Metadata)
 			},
 		},
 	}
