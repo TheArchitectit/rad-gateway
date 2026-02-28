@@ -19,9 +19,10 @@ var postgresMigrationsFS embed.FS
 
 // PostgresDB implements the Database interface for PostgreSQL.
 type PostgresDB struct {
-	db     *sql.DB
-	config Config
-	repos  *pgRepositories
+	db      *sql.DB
+	config  Config
+	repos   *pgRepositories
+	metrics *MetricsCollector
 }
 
 // pgRepositories holds all PostgreSQL repository implementations.
@@ -114,8 +115,9 @@ func NewPostgres(config Config) (*PostgresDB, error) {
 	}
 
 	database := &PostgresDB{
-		db:     db,
-		config: config,
+		db:      db,
+		config:  config,
+		metrics: NewMetricsCollector(),
 	}
 
 	// Initialize repositories
@@ -155,17 +157,26 @@ func (p *PostgresDB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx,
 
 // ExecContext executes a query without returning rows.
 func (p *PostgresDB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	return p.db.ExecContext(ctx, query, args...)
+	start := time.Now()
+	result, err := p.db.ExecContext(ctx, query, args...)
+	p.metrics.RecordQuery("EXEC", time.Since(start), err)
+	return result, err
 }
 
 // QueryContext executes a query that returns rows.
 func (p *PostgresDB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	return p.db.QueryContext(ctx, query, args...)
+	start := time.Now()
+	rows, err := p.db.QueryContext(ctx, query, args...)
+	p.metrics.RecordQuery("QUERY", time.Since(start), err)
+	return rows, err
 }
 
 // QueryRowContext executes a query that returns a single row.
 func (p *PostgresDB) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	return p.db.QueryRowContext(ctx, query, args...)
+	start := time.Now()
+	row := p.db.QueryRowContext(ctx, query, args...)
+	p.metrics.RecordQuery("QUERY_ROW", time.Since(start), nil)
+	return row
 }
 
 // Repository accessors
@@ -185,6 +196,11 @@ func (p *PostgresDB) AuditLog() AuditLogRepository         { return p.repos.audi
 
 // DB returns the underlying *sql.DB for migrations and advanced operations.
 func (p *PostgresDB) DB() *sql.DB { return p.db }
+
+// GetMetrics returns the database metrics collector
+func (p *PostgresDB) GetMetrics() *MetricsCollector {
+	return p.metrics
+}
 
 // RunMigrations executes all pending migrations.
 func (p *PostgresDB) RunMigrations() error {
