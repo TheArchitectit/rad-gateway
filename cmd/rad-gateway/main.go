@@ -27,7 +27,10 @@ import (
 	"radgateway/internal/middleware"
 	"radgateway/internal/oauth"
 	"radgateway/internal/provider"
+	"radgateway/internal/provider/anthropic"
+	"radgateway/internal/provider/gemini"
 	"radgateway/internal/provider/generic"
+	"radgateway/internal/provider/openai"
 	"radgateway/internal/routing"
 	"radgateway/internal/secrets"
 	"radgateway/internal/trace"
@@ -241,24 +244,21 @@ func main() {
 	}
 
 	// Add external provider adapters if API keys are configured
+	// Using provider-specific adapters for proper request/response transformations
 	if key := getenv("OPENAI_API_KEY", ""); key != "" {
-		openaiAdapter := generic.NewAdapter("https://api.openai.com/v1", key)
+		openaiAdapter := openai.NewAdapter(key)
 		adapters = append(adapters, openaiAdapter)
-		log.Info("OpenAI provider registered")
+		log.Info("OpenAI provider registered", "adapter", "openai-specific")
 	}
 	if key := getenv("ANTHROPIC_API_KEY", ""); key != "" {
-		anthropicAdapter := generic.NewAdapter("https://api.anthropic.com/v1", key,
-			generic.WithAuthType("bearer", "x-api-key", ""),
-		)
+		anthropicAdapter := anthropic.NewAdapter(key)
 		adapters = append(adapters, anthropicAdapter)
-		log.Info("Anthropic provider registered")
+		log.Info("Anthropic provider registered", "adapter", "anthropic-specific")
 	}
 	if key := getenv("GEMINI_API_KEY", ""); key != "" {
-		geminiAdapter := generic.NewAdapter("https://generativelanguage.googleapis.com/v1beta", key,
-			generic.WithAuthType("api-key", "x-goog-api-key", ""),
-		)
+		geminiAdapter := gemini.NewAdapter(key)
 		adapters = append(adapters, geminiAdapter)
-		log.Info("Gemini provider registered")
+		log.Info("Gemini provider registered", "adapter", "gemini-specific")
 	}
 
 	registry := provider.NewRegistry(adapters...)
