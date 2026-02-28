@@ -7,6 +7,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -46,18 +47,23 @@ func NewPostgres(config Config) (*PostgresDB, error) {
 		return nil, fmt.Errorf("PostgreSQL DSN is required")
 	}
 
-	// Configure connection pool with defaults (max 10 connections as specified)
+	// Configure connection pool with production-ready defaults
+	// Increased from 10 to 25 for better throughput under load
 	maxOpenConns := config.MaxOpenConns
 	if maxOpenConns <= 0 {
-		maxOpenConns = 10 // Default: max 10 connections as specified
+		maxOpenConns = 25 // Production default: 25 connections
 	}
 	maxIdleConns := config.MaxIdleConns
 	if maxIdleConns <= 0 {
-		maxIdleConns = 3
+		maxIdleConns = 10 // 40% of max open for better connection reuse
 	}
 	connMaxLifetime := config.ConnMaxLifetime
 	if connMaxLifetime <= 0 {
-		connMaxLifetime = 5 * time.Minute
+		connMaxLifetime = 15 * time.Minute // Extended for production stability
+	}
+	connMaxIdleTime := config.ConnMaxIdleTime
+	if connMaxIdleTime <= 0 {
+		connMaxIdleTime = 5 * time.Minute // Close idle connections after 5 min
 	}
 
 	// Retry logic: 3 attempts with exponential backoff
@@ -81,9 +87,11 @@ func NewPostgres(config Config) (*PostgresDB, error) {
 		db.SetMaxOpenConns(maxOpenConns)
 		db.SetMaxIdleConns(maxIdleConns)
 		db.SetConnMaxLifetime(connMaxLifetime)
-		if config.ConnMaxIdleTime > 0 {
-			db.SetConnMaxIdleTime(config.ConnMaxIdleTime)
-		}
+		db.SetConnMaxIdleTime(connMaxIdleTime)
+
+		// Log pool configuration
+		log.Printf("[db] pool configured: max_open=%d max_idle=%d lifetime=%v idle_time=%v",
+			maxOpenConns, maxIdleConns, connMaxLifetime, connMaxIdleTime)
 
 		// Test connection with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
