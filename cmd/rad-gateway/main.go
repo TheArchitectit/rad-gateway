@@ -27,6 +27,7 @@ import (
 	"radgateway/internal/middleware"
 	"radgateway/internal/oauth"
 	"radgateway/internal/provider"
+	"radgateway/internal/provider/generic"
 	"radgateway/internal/routing"
 	"radgateway/internal/secrets"
 	"radgateway/internal/trace"
@@ -222,7 +223,45 @@ func main() {
 	usageSink := usage.NewInMemory(2000)
 	traceStore := trace.NewStore(4000)
 
-	registry := provider.NewRegistry(provider.NewMockAdapter())
+	// Build provider registry with configured adapters
+	var adapters []provider.Adapter
+
+	// Always add mock adapter as fallback
+	adapters = append(adapters, provider.NewMockAdapter())
+
+	// Add Ollama adapter if enabled
+	if getenv("OLLAMA_ENABLED", "") == "true" {
+		ollamaBase := getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+		ollamaKey := getenv("OLLAMA_API_KEY", "ollama")
+		ollamaAdapter := generic.NewAdapter(ollamaBase, ollamaKey,
+			generic.WithAuthType("bearer", "Authorization", "Bearer "),
+		)
+		adapters = append(adapters, ollamaAdapter)
+		log.Info("Ollama provider registered", "base_url", ollamaBase)
+	}
+
+	// Add external provider adapters if API keys are configured
+	if key := getenv("OPENAI_API_KEY", ""); key != "" {
+		openaiAdapter := generic.NewAdapter("https://api.openai.com/v1", key)
+		adapters = append(adapters, openaiAdapter)
+		log.Info("OpenAI provider registered")
+	}
+	if key := getenv("ANTHROPIC_API_KEY", ""); key != "" {
+		anthropicAdapter := generic.NewAdapter("https://api.anthropic.com/v1", key,
+			generic.WithAuthType("bearer", "x-api-key", ""),
+		)
+		adapters = append(adapters, anthropicAdapter)
+		log.Info("Anthropic provider registered")
+	}
+	if key := getenv("GEMINI_API_KEY", ""); key != "" {
+		geminiAdapter := generic.NewAdapter("https://generativelanguage.googleapis.com/v1beta", key,
+			generic.WithAuthType("api-key", "x-goog-api-key", ""),
+		)
+		adapters = append(adapters, geminiAdapter)
+		log.Info("Gemini provider registered")
+	}
+
+	registry := provider.NewRegistry(adapters...)
 	routeTable := make(map[string][]provider.Candidate)
 	for model, candidates := range cfg.ModelRoutes {
 		mapped := make([]provider.Candidate, 0, len(candidates))

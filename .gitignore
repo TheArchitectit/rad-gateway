@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.testing
 
 # Local state
 .teams/
@@ -23,7 +24,8 @@ RELEASE_NOTES.md
 RUNBOOK.md
 docs/container/team-hotel-accomplishments.md
 deploy/test-backup-restore.sh
-scripts/
+scripts/*
+!scripts/test-local.sh
 /opt/
 *.token
 *.key

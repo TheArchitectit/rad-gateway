@@ -57,6 +57,34 @@ curl http://localhost:8090/health
 
 See [docs/getting-started.md](docs/getting-started.md) for detailed deployment options including systemd service configuration and Infisical secrets management.
 
+## Local Testing with Ollama
+
+Test RAD Gateway locally without external API keys using Ollama:
+
+```bash
+# 1. Start Ollama
+ollama serve
+ollama pull llama3.2:latest
+
+# 2. Configure for testing
+cp .env.testing .env
+
+# 3. Run gateway
+go run ./cmd/rad-gateway
+
+# 4. Test
+curl -H "Authorization: Bearer test_key_for_local_testing_only_001" \
+     http://localhost:8090/v1/models
+
+curl -X POST \
+     -H "Authorization: Bearer test_key_for_local_testing_only_001" \
+     -H "Content-Type: application/json" \
+     -d '{"model":"llama3.2","messages":[{"role":"user","content":"Hello"}]}' \
+     http://localhost:8090/v1/chat/completions
+```
+
+See [docs/testing/local-testing.md](docs/testing/local-testing.md) for detailed testing instructions.
+
 ## Project Goal
 
 RAD Gateway (Brass Relay) aims to be a production-capable gateway that provides a single, stable API surface across major model ecosystems while preserving compatibility with existing clients.

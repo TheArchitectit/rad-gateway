@@ -115,15 +115,60 @@ func parseKeys(raw string) map[string]string {
 }
 
 func loadModelRoutes() map[string][]Candidate {
-	return map[string][]Candidate{
-		"gpt-4o-mini": {
-			{Provider: "mock", Model: "gpt-4o-mini", Weight: 80},
-			{Provider: "mock", Model: "fallback-mini", Weight: 20},
-		},
-		"claude-3-5-sonnet": {
-			{Provider: "mock", Model: "claude-3-5-sonnet", Weight: 100},
-		},
+	routes := make(map[string][]Candidate)
+
+	// Check if Ollama is enabled
+	if getenv("OLLAMA_ENABLED", "") == "true" {
+		ollamaBase := getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+		_ = ollamaBase // Used in main.go to initialize adapter
+
+		// Add Ollama models
+		if model := getenv("OLLAMA_MODEL_LLAMA3", ""); model != "" {
+			routes["llama3.2"] = []Candidate{
+				{Provider: "ollama", Model: model, Weight: 100},
+			}
+		}
+		if model := getenv("OLLAMA_MODEL_MISTRAL", ""); model != "" {
+			routes["mistral"] = []Candidate{
+				{Provider: "ollama", Model: model, Weight: 100},
+			}
+		}
+		if model := getenv("OLLAMA_MODEL_CODELLAMA", ""); model != "" {
+			routes["codellama"] = []Candidate{
+				{Provider: "ollama", Model: model, Weight: 100},
+			}
+		}
+		// Default fallback
+		routes["default"] = []Candidate{
+			{Provider: "ollama", Model: "llama3.2:latest", Weight: 100},
+		}
 	}
+
+	// Add external providers if API keys are present
+	if getenv("OPENAI_API_KEY", "") != "" {
+		routes["gpt-4o-mini"] = []Candidate{
+			{Provider: "openai", Model: "gpt-4o-mini", Weight: 100},
+		}
+	}
+	if getenv("ANTHROPIC_API_KEY", "") != "" {
+		routes["claude-3-5-sonnet"] = []Candidate{
+			{Provider: "anthropic", Model: "claude-3-5-sonnet-20241022", Weight: 100},
+		}
+	}
+	if getenv("GEMINI_API_KEY", "") != "" {
+		routes["gemini-1.5-flash"] = []Candidate{
+			{Provider: "gemini", Model: "gemini-1.5-flash", Weight: 100},
+		}
+	}
+
+	// If no routes configured, add mock provider as fallback
+	if len(routes) == 0 {
+		routes["gpt-4o-mini"] = []Candidate{
+			{Provider: "mock", Model: "gpt-4o-mini", Weight: 100},
+		}
+	}
+
+	return routes
 }
 
 func getenv(k, fallback string) string {
