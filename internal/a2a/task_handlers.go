@@ -120,7 +120,7 @@ func (h *TaskHandlers) handleSendTask(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(SendTaskResponse{Task: *task})
+	_ = json.NewEncoder(w).Encode(SendTaskResponse{Task: task})
 }
 
 func (h *TaskHandlers) handleSendTaskSubscribe(w http.ResponseWriter, r *http.Request) {
@@ -285,12 +285,40 @@ func (h *TaskHandlers) handleTaskByID(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(GetTaskResponse{Task: *task})
 }
 
+// HandleCancelTask handles POST /a2a/tasks/cancel with taskId in request body.
+func (h *TaskHandlers) HandleCancelTask(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeTaskError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		TaskID string `json:"taskId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.log.Warn("failed to decode cancel task request", "error", err)
+		writeTaskError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.TaskID == "" {
+		writeTaskError(w, http.StatusBadRequest, "taskId is required")
+		return
+	}
+
+	h.handleCancelTaskWithID(w, r, req.TaskID)
+}
+
 func (h *TaskHandlers) handleCancelTask(w http.ResponseWriter, r *http.Request, taskID string) {
 	if r.Method != http.MethodPost {
 		writeTaskError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
+	h.handleCancelTaskWithID(w, r, taskID)
+}
+
+func (h *TaskHandlers) handleCancelTaskWithID(w http.ResponseWriter, r *http.Request, taskID string) {
 	task, err := h.taskStore.GetTask(r.Context(), taskID)
 	if err != nil {
 		if err == ErrTaskNotFound {

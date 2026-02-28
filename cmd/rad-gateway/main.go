@@ -298,7 +298,8 @@ func main() {
 		w.Write([]byte(response))
 	}))
 
-	a2a.NewAgentCardHandler(getenv("RAD_PUBLIC_BASE_URL", "http://localhost"), "0.1.0").Register(combinedMux)
+	// TODO: Wire up A2A handlers with proper repository
+	// a2a.NewHandlers(repo).Register(combinedMux)
 
 	// Admin endpoints require JWT authentication
 	jwtMiddleware := auth.NewMiddleware(jwtManager)

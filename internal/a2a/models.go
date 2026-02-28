@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+// ============================================================================
+// Database Model Card Types (for a2a_model_cards table)
+// ============================================================================
+
 // ModelCardStatus represents the status of a model card.
 type ModelCardStatus string
 
@@ -55,6 +59,84 @@ type ModelCardList struct {
 	Limit int `json:"limit"`
 	// Offset is the page offset.
 	Offset int `json:"offset"`
+}
+
+// IsValidStatus checks if a status string is valid.
+func IsValidStatus(status string) bool {
+	switch ModelCardStatus(status) {
+	case ModelCardStatusActive, ModelCardStatusDeprecated, ModelCardStatusArchived:
+		return true
+	}
+	return false
+}
+
+// ============================================================================
+// A2A Protocol Types
+// ============================================================================
+
+// AgentCard represents an agent's capabilities and metadata per A2A protocol.
+type AgentCard struct {
+	// Name is the display name of the agent.
+	Name string `json:"name"`
+	// Description describes what the agent does.
+	Description string `json:"description"`
+	// URL is the endpoint URL for the agent.
+	URL string `json:"url"`
+	// Version is the agent version.
+	Version string `json:"version"`
+	// Capabilities describes what the agent can do.
+	Capabilities Capabilities `json:"capabilities"`
+	// Skills lists the capabilities offered by the agent.
+	Skills []Skill `json:"skills"`
+	// Authentication describes supported authentication schemes.
+	Authentication AuthInfo `json:"authentication"`
+	// CreatedAt is when the agent card was created.
+	CreatedAt time.Time `json:"createdAt"`
+	// UpdatedAt is when the agent card was last updated.
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// AuthInfo describes authentication schemes.
+type AuthInfo struct {
+	Schemes []string `json:"schemes"`
+}
+
+// Capabilities describes what an agent can do.
+type Capabilities struct {
+	// Streaming indicates if the agent supports streaming responses.
+	Streaming bool `json:"streaming"`
+	// PushNotifications indicates if the agent supports push notifications.
+	PushNotifications bool `json:"pushNotifications"`
+	// StateTransitionHistory indicates if the agent tracks state transitions.
+	StateTransitionHistory bool `json:"stateTransitionHistory"`
+}
+
+// Skill represents a capability offered by an agent.
+type Skill struct {
+	// ID is the unique identifier for the skill.
+	ID string `json:"id"`
+	// Name is the display name of the skill.
+	Name string `json:"name"`
+	// Description describes what the skill does.
+	Description string `json:"description"`
+	// Tags are labels for categorizing the skill.
+	Tags []string `json:"tags,omitempty"`
+	// Examples are sample inputs or use cases.
+	Examples []string `json:"examples,omitempty"`
+	// Input is the input schema for the skill.
+	Input *SkillSchema `json:"input,omitempty"`
+	// Output is the output schema for the skill.
+	Output *SkillSchema `json:"output,omitempty"`
+}
+
+// SkillSchema defines the input/output structure for a skill.
+type SkillSchema struct {
+	// Type is the data type (e.g., "object", "string").
+	Type string `json:"type"`
+	// Properties are the schema properties for object types.
+	Properties map[string]interface{} `json:"properties,omitempty"`
+	// Required lists the required property names.
+	Required []string `json:"required,omitempty"`
 }
 
 // A2ACard represents the A2A protocol model card structure.
@@ -128,15 +210,6 @@ type UpdateModelCardRequest struct {
 	Description *string          `json:"description,omitempty"`
 	Card        *json.RawMessage `json:"card,omitempty"`
 	Status      *ModelCardStatus `json:"status,omitempty"`
-}
-
-// IsValidStatus checks if a status string is valid.
-func IsValidStatus(status string) bool {
-	switch ModelCardStatus(status) {
-	case ModelCardStatusActive, ModelCardStatusDeprecated, ModelCardStatusArchived:
-		return true
-	}
-	return false
 }
 
 // ParseA2ACard parses the Card JSONB field into an A2ACard struct.

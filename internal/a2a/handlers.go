@@ -3,6 +3,7 @@ package a2a
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -13,10 +14,11 @@ import (
 
 // Handlers provides HTTP handlers for A2A Model Card operations.
 type Handlers struct {
-	repo      Repository
-	taskStore TaskStore
-	task      *TaskHandlers
-	log       *slog.Logger
+	repo         Repository
+	taskStore    TaskStore
+	task         *TaskHandlers
+	taskManager  *TaskManager
+	log          *slog.Logger
 }
 
 // NewHandlers creates new A2A handlers with the given repository.
@@ -46,6 +48,15 @@ func NewHandlersWithTaskStore(repo Repository, taskStore TaskStore, gateway *cor
 	}
 }
 
+// NewHandlersWithTaskManager creates new A2A handlers with a TaskManager for task lifecycle operations.
+func NewHandlersWithTaskManager(repo Repository, taskManager *TaskManager) *Handlers {
+	return &Handlers{
+		repo:        repo,
+		taskManager: taskManager,
+		log:         logger.WithComponent("a2a_handlers"),
+	}
+}
+
 // Register registers A2A routes on the provided mux.
 func (h *Handlers) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/v1/a2a/model-cards", h.handleModelCards)
@@ -57,10 +68,21 @@ func (h *Handlers) Register(mux *http.ServeMux) {
 	if h.task != nil {
 		mux.HandleFunc("/v1/a2a/tasks/send", h.task.handleSendTask)
 		mux.HandleFunc("/v1/a2a/tasks/sendSubscribe", h.task.handleSendTaskSubscribe)
+		mux.HandleFunc("/v1/a2a/tasks/cancel", h.task.HandleCancelTask)
 		mux.HandleFunc("/v1/a2a/tasks/", h.task.handleTaskByID)
 		mux.HandleFunc("/a2a/tasks/send", h.task.handleSendTask)
 		mux.HandleFunc("/a2a/tasks/sendSubscribe", h.task.handleSendTaskSubscribe)
+		mux.HandleFunc("/a2a/tasks/cancel", h.task.HandleCancelTask)
 		mux.HandleFunc("/a2a/tasks/", h.task.handleTaskByID)
+	}
+	// Register task lifecycle endpoints using TaskManager
+	if h.taskManager != nil {
+		mux.HandleFunc("/v1/a2a/tasks/send", h.handleSendTask)
+		mux.HandleFunc("/v1/a2a/tasks/cancel", h.handleCancelTask)
+		mux.HandleFunc("/v1/a2a/tasks/", h.handleTaskByID)
+		mux.HandleFunc("/a2a/tasks/send", h.handleSendTask)
+		mux.HandleFunc("/a2a/tasks/cancel", h.handleCancelTask)
+		mux.HandleFunc("/a2a/tasks/", h.handleTaskByID)
 	}
 }
 
@@ -320,4 +342,158 @@ func (h *Handlers) HealthCheck() http.HandlerFunc {
 			"service": "a2a",
 		})
 	}
+}
+
+// Task Lifecycle Handlers (using TaskManager)
+
+// handleSendTask handles POST /a2a/tasks/send - Create a new task.
+func (h *Handlers) handleSendTask(w http.ResponseWriter, r *http.Request) {
+	if h.taskManager == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "task manager not configured"})
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	var req SendTaskRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.log.Warn("failed to decode send task request", "error", err)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	// Validate required fields
+	if req.SessionID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "sessionId is required"})
+		return
+	}
+
+	task, err := h.taskManager.CreateTask(r.Context(), req)
+	if err != nil {
+		h.log.Error("failed to create task", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to create task"})
+		return
+	}
+
+	h.log.Info("task created via handleSendTask", "id", task.ID, "session_id", task.SessionID)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(SendTaskResponse{Task: task})
+}
+
+// handleTaskByID handles GET /a2a/tasks/{taskId} - Get a task by ID.
+func (h *Handlers) handleTaskByID(w http.ResponseWriter, r *http.Request) {
+	if h.taskManager == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "task manager not configured"})
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	// Extract task ID from path: /v1/a2a/tasks/{taskId} or /a2a/tasks/{taskId}
+	path := strings.TrimPrefix(r.URL.Path, "/v1/a2a/tasks/")
+	if path == r.URL.Path {
+		path = strings.TrimPrefix(r.URL.Path, "/a2a/tasks/")
+	}
+	taskID := strings.Split(path, "/")[0]
+
+	if taskID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "task ID required"})
+		return
+	}
+
+	task, err := h.taskManager.GetTask(r.Context(), taskID)
+	if err != nil {
+		if errors.Is(err, ErrTaskNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "task not found"})
+			return
+		}
+		h.log.Error("failed to get task", "id", taskID, "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to get task"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(task)
+}
+
+// handleCancelTask handles POST /a2a/tasks/cancel - Cancel a task.
+func (h *Handlers) handleCancelTask(w http.ResponseWriter, r *http.Request) {
+	if h.taskManager == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "task manager not configured"})
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	var req struct {
+		TaskID string `json:"taskId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.log.Warn("failed to decode cancel task request", "error", err)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	if req.TaskID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "taskId is required"})
+		return
+	}
+
+	if err := h.taskManager.CancelTask(r.Context(), req.TaskID); err != nil {
+		if errors.Is(err, ErrTaskNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "task not found"})
+			return
+		}
+		if errors.Is(err, ErrInvalidTransition) {
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{"error": "cannot cancel task in current state"})
+			return
+		}
+		h.log.Error("failed to cancel task", "id", req.TaskID, "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to cancel task"})
+		return
+	}
+
+	// Return the updated task
+	task, err := h.taskManager.GetTask(r.Context(), req.TaskID)
+	if err != nil {
+		h.log.Error("failed to get task after cancel", "id", req.TaskID, "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to get updated task"})
+		return
+	}
+
+	h.log.Info("task cancelled", "id", req.TaskID)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(task)
 }

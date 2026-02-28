@@ -7,6 +7,34 @@ import (
 	"time"
 )
 
+// TaskStatus represents the status of an A2A task.
+type TaskStatus string
+
+const (
+	// TaskStatusPending indicates the task is waiting to be processed.
+	TaskStatusPending TaskStatus = "pending"
+	// TaskStatusWorking indicates the task is being processed.
+	TaskStatusWorking TaskStatus = "working"
+	// TaskStatusInputRequired indicates the task requires additional input.
+	TaskStatusInputRequired TaskStatus = "input-required"
+	// TaskStatusCompleted indicates the task completed successfully.
+	TaskStatusCompleted TaskStatus = "completed"
+	// TaskStatusFailed indicates the task failed.
+	TaskStatusFailed TaskStatus = "failed"
+	// TaskStatusCancelled indicates the task was cancelled.
+	TaskStatusCancelled TaskStatus = "cancelled"
+)
+
+// IsValidTaskStatus checks if a status string is valid.
+func IsValidTaskStatus(status string) bool {
+	switch TaskStatus(status) {
+	case TaskStatusPending, TaskStatusWorking, TaskStatusInputRequired,
+		TaskStatusCompleted, TaskStatusFailed, TaskStatusCancelled:
+		return true
+	}
+	return false
+}
+
 type TaskState string
 
 const (
@@ -56,32 +84,74 @@ func (t *Task) CanTransitionTo(target TaskState) bool {
 	}
 }
 
+// Part represents content within an artifact.
+type Part struct {
+	// Type is the content type (e.g., "text", "file", "data").
+	Type string `json:"type"`
+	// Text is the text content (when type is "text").
+	Text string `json:"text,omitempty"`
+}
+
+// Message represents communication in task history.
 type Message struct {
-	Role     string                 `json:"role"`
-	Content  string                 `json:"content"`
+	// Role is the sender role (e.g., "user", "agent").
+	Role string `json:"role"`
+	// Content is the message content.
+	Content string `json:"content"`
+	// Parts are structured content parts.
+	Parts []Part `json:"parts,omitempty"`
+	// Metadata is additional message metadata.
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
+// Artifact represents task output.
 type Artifact struct {
-	Type        string          `json:"type"`
-	Content     json.RawMessage `json:"content"`
-	Name        string          `json:"name,omitempty"`
-	Description string          `json:"description,omitempty"`
+	// ID is the unique identifier for the artifact.
+	ID string `json:"id"`
+	// Type is the artifact type.
+	Type string `json:"type"`
+	// Parts are the content parts of the artifact.
+	Parts []Part `json:"parts"`
+	// Metadata is additional artifact metadata.
+	Metadata interface{} `json:"metadata,omitempty"`
+	// Name is the artifact name.
+	Name string `json:"name,omitempty"`
+	// Description is the artifact description.
+	Description string `json:"description,omitempty"`
+	// Content is the raw content (for backward compatibility).
+	Content json.RawMessage `json:"content,omitempty"`
 }
 
+// Task represents an A2A task.
 type Task struct {
-	ID              string          `db:"id" json:"id"`
-	Status          TaskState       `db:"status" json:"status"`
-	SessionID       string          `db:"session_id" json:"sessionId"`
-	Message         Message         `db:"message" json:"message"`
-	Artifacts       []Artifact      `db:"artifacts" json:"artifacts,omitempty"`
-	Metadata        json.RawMessage `db:"metadata" json:"metadata,omitempty"`
-	CreatedAt       time.Time       `db:"created_at" json:"createdAt"`
-	UpdatedAt       time.Time       `db:"updated_at" json:"updatedAt"`
-	ExpiresAt       *time.Time      `db:"expires_at" json:"expiresAt,omitempty"`
-	ParentID        *string         `db:"parent_id" json:"parentId,omitempty"`
-	WorkspaceID     *string         `db:"workspace_id" json:"workspaceId,omitempty"`
-	AssignedAgentID *string         `db:"assigned_agent_id" json:"assignedAgentId,omitempty"`
+	// ID is the unique task identifier.
+	ID string `db:"id" json:"id"`
+	// Status is the current task status.
+	Status TaskState `db:"status" json:"status"`
+	// SessionID is the session identifier for grouping tasks.
+	SessionID string `db:"session_id" json:"sessionId"`
+	// Message is the initial task message.
+	Message Message `db:"message" json:"message"`
+	// Artifacts are the task outputs.
+	Artifacts []Artifact `db:"artifacts" json:"artifacts,omitempty"`
+	// History is the message history for the task.
+	History []Message `db:"history" json:"history,omitempty"`
+	// Metadata is additional task metadata.
+	Metadata json.RawMessage `db:"metadata" json:"metadata,omitempty"`
+	// CreatedAt is when the task was created.
+	CreatedAt time.Time `db:"created_at" json:"createdAt"`
+	// UpdatedAt is when the task was last updated.
+	UpdatedAt time.Time `db:"updated_at" json:"updatedAt"`
+	// CompletedAt is when the task was completed (if applicable).
+	CompletedAt *time.Time `db:"completed_at" json:"completedAt,omitempty"`
+	// ExpiresAt is when the task expires.
+	ExpiresAt *time.Time `db:"expires_at" json:"expiresAt,omitempty"`
+	// ParentID is the parent task ID.
+	ParentID *string `db:"parent_id" json:"parentId,omitempty"`
+	// WorkspaceID is the workspace ID.
+	WorkspaceID *string `db:"workspace_id" json:"workspaceId,omitempty"`
+	// AssignedAgentID is the assigned agent ID.
+	AssignedAgentID *string `db:"assigned_agent_id" json:"assignedAgentId,omitempty"`
 }
 
 type TaskList struct {
@@ -100,14 +170,34 @@ type TaskFilter struct {
 	Offset      int
 }
 
+// SendTaskRequest is the request body for task creation.
 type SendTaskRequest struct {
-	SessionID string          `json:"sessionId"`
-	Message   Message         `json:"message"`
-	Metadata  json.RawMessage `json:"metadata,omitempty"`
+	// ID is an optional client-provided task ID.
+	ID string `json:"id,omitempty"`
+	// SessionID is the session identifier.
+	SessionID string `json:"sessionId"`
+	// SkillID is the ID of the skill to invoke.
+	SkillID string `json:"skillId"`
+	// Message is the initial message for the task.
+	Message Message `json:"message"`
+	// Metadata is additional request metadata.
+	Metadata json.RawMessage `json:"metadata,omitempty"`
 }
 
+// Error represents an A2A error response.
+type Error struct {
+	// Code is the error code.
+	Code int `json:"code"`
+	// Message is the human-readable error message.
+	Message string `json:"message"`
+}
+
+// SendTaskResponse is the response from task creation.
 type SendTaskResponse struct {
-	Task Task `json:"task"`
+	// Task is the created task (nil if error).
+	Task *Task `json:"task,omitempty"`
+	// Error is the error information (nil if successful).
+	Error *Error `json:"error,omitempty"`
 }
 
 type GetTaskResponse struct {
