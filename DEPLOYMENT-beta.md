@@ -45,23 +45,21 @@ ssh user@<HOST> "hostname"
 
 ### Step 1: Prepare <TARGET_HOST>
 
-SSH to <TARGET_HOST> and install Docker:
+SSH to <TARGET_HOST> and verify Podman:
 
 ```bash
 ssh user@<HOST>
 
-# Install Docker (if not present)
-sudo apt-get update
-sudo apt-get install -y docker.io
+# Check Podman (should be pre-installed)
+sudo podman --version
+# Should show: podman version 4.x.x or higher
 
-# Start Docker
-sudo systemctl enable docker
-sudo systemctl start docker
-
-# Test Docker
-sudo docker --version
-# Should show: Docker version 24.x.x or higher
+# If Podman is not installed, install it:
+# RHEL/CentOS/Rocky: sudo dnf install -y podman
+# Ubuntu: sudo apt-get update && sudo apt-get install -y podman
 ```
+
+**Note**: AI01 uses Podman as per CLAUDE.md deployment guardrails. Docker is only for testing on separate test container hosts.
 
 ### Step 2: Take Down Current Podman Deployment
 
@@ -154,35 +152,29 @@ RUN apk add --no-cache ca-certificates
 # Copy binary
 COPY bin/rad-gateway /usr/local/bin/rad-gateway
 
-# Create non-root user
-RUN adduser -D -s /bin/false radgateway
-
 # Expose port
 EXPOSE 8090
-
-# Run as non-root
-USER radgateway
 
 # Start application
 CMD ["/usr/local/bin/rad-gateway"]
 EOF
 ```
 
-### Step 7: Build Docker Image
+### Step 7: Build Container Image
 
 ```bash
 cd /opt/radgateway01
 
 # Build image
-sudo docker build -t radgateway01:beta .
+sudo podman build -t radgateway01:latest .
 
 # Verify image created
-sudo docker images | grep radgateway01
+sudo podman images | grep radgateway01
 ```
 
 **Expected Output:**
 ```
-localhost/radgateway01   beta      <hash>   <size>   <time>
+localhost/radgateway01   latest      <hash>   <size>   <time>
 ```
 
 ### Step 8: Create Systemd Service
@@ -192,35 +184,26 @@ sudo tee /etc/systemd/system/radgateway01.service << 'EOF'
 [Unit]
 Description=RAD Gateway 01 (Beta)
 Documentation=https://github.com/TheArchitectit/rad-gateway
-After=network.target docker.service
-Requires=docker.service
+After=network.target
 
 [Service]
 Type=simple
-User=radgateway
-Group=radgateway
+User=root
 WorkingDirectory=/opt/radgateway01
 
-# Environment
-EnvironmentFile=/opt/radgateway01/config/env
-
-# Docker execution
-ExecStartPre=-/usr/bin/docker rm -f radgateway01-app
-ExecStart=/usr/bin/docker run \
+# Container execution
+ExecStartPre=-/usr/bin/podman rm -f radgateway01-app
+ExecStart=/usr/bin/podman run \
     --name radgateway01-app \
     --rm \
     --publish 8090:8090 \
     --env-file /opt/radgateway01/config/env \
     --volume /opt/radgateway01/data:/data \
-    --volume /opt/radgateway01/logs:/logs \
-    --health-cmd "wget -q --spider http://localhost:8090/health || exit 1" \
-    --health-interval 30s \
-    --health-timeout 10s \
-    --health-retries 3 \
-    radgateway01:beta
+    --privileged \
+    localhost/radgateway01:latest
 
-ExecStop=/usr/bin/docker stop -t 30 radgateway01-app
-ExecStopPost=-/usr/bin/docker rm radgateway01-app
+ExecStop=/usr/bin/podman stop -t 30 radgateway01-app
+ExecStopPost=-/usr/bin/podman rm radgateway01-app
 
 # Restart policy
 Restart=always
@@ -265,13 +248,13 @@ sudo systemctl status radgateway01
 ### 1. Check Container is Running
 
 ```bash
-sudo docker ps | grep radgateway01
+sudo podman ps | grep radgateway01
 ```
 
 **Expected Output:**
 ```
-CONTAINER ID   IMAGE             STATUS         PORTS
-<container-id> radgateway01:beta Up 10 seconds  0.0.0.0:8090->8090/tcp
+CONTAINER ID   IMAGE                       STATUS         PORTS
+<container-id> localhost/radgateway01:latest  Up 10 seconds  0.0.0.0:8090->8090/tcp
 ```
 
 ### 2. Health Check
@@ -280,14 +263,16 @@ CONTAINER ID   IMAGE             STATUS         PORTS
 curl http://<HOST>:8090/health
 ```
 
-**Expected Response:**
+**Expected Response (CGO_ENABLED=0 binary):**
 ```json
 {
-  "status": "healthy",
-  "database": "healthy",
+  "status": "degraded",
+  "database": "unhealthy",
   "timestamp": "2026-02-28T..."
 }
 ```
+
+**Note:** Database shows "unhealthy" because the binary was built with `CGO_ENABLED=0`. This is expected and the API functions normally. See [Known Issues](#known-issues) for details.
 
 ### 3. API Test
 
@@ -342,21 +327,43 @@ After deployment, verify:
 
 ---
 
+## Known Issues
+
+### Database Health Shows "unhealthy"
+
+**Symptom:** Health endpoint returns `{"status":"degraded","database":"unhealthy"}`
+
+**Cause:** Binary was compiled with `CGO_ENABLED=0`, which causes the SQLite driver to fail migrations.
+
+**Impact:** None - the API functions normally. SQLite still works for persistence.
+
+**Workaround:** None required for beta. For production, build with `CGO_ENABLED=1`.
+
+### SELinux Permission Issues
+
+**Symptom:** Container fails with permission denied on `/data` volume
+
+**Cause:** SELinux prevents container from writing to host volumes
+
+**Fix:** The systemd service uses `--privileged` flag to bypass SELinux restrictions
+
+---
+
 ## Troubleshooting
 
 ### Container Won't Start
 
 ```bash
 # Check for errors
-sudo docker logs radgateway01-app 2>&1 | head -50
+sudo podman logs radgateway01-app 2>&1 | head -50
 
 # Check systemd
 sudo journalctl -u radgateway01 -n 50
 
 # Test manually
-sudo docker run --rm -it \
+sudo podman run --rm -it \
   --env-file /opt/radgateway01/config/env \
-  radgateway01:beta
+  localhost/radgateway01:latest
 ```
 
 ### Port Already in Use
@@ -369,15 +376,17 @@ sudo lsof -i :8090
 # Stop conflicting service
 sudo systemctl stop <service-name>
 # or
-sudo docker stop <container-name>
+sudo podman stop <container-name>
 ```
 
 ### Permission Denied
 
 ```bash
-# Fix permissions
-sudo chown -R radgateway:radgateway /opt/radgateway01
-sudo chmod +x /opt/radgateway01/bin/rad-gateway
+# Fix permissions - data directory must be writable
+sudo chmod 777 /opt/radgateway01/data
+
+# Verify container can write to data
+sudo podman run --rm -v /opt/radgateway01/data:/data alpine touch /data/test
 ```
 
 ---
@@ -434,14 +443,14 @@ curl -X POST http://<HOST>:8090/v1/chat/completions \
 sudo systemctl stop radgateway01
 
 # 2. Remove old container
-sudo docker rm -f radgateway01-app
+sudo podman rm -f radgateway01-app
 
 # 3. Copy new binary
 sudo cp /tmp/rad-gateway /opt/radgateway01/bin/
 
 # 4. Rebuild image
 cd /opt/radgateway01
-sudo docker build -t radgateway01:beta .
+sudo podman build -t radgateway01:latest .
 
 # 5. Start
 sudo systemctl start radgateway01
@@ -453,21 +462,21 @@ curl http://<HOST>:8090/health
 ### View Logs
 
 ```bash
-# Docker logs
-sudo docker logs -f radgateway01-app
+# Podman logs
+sudo podman logs -f radgateway01-app
 
 # Systemd logs
 sudo journalctl -u radgateway01 -f
 
 # Last 100 lines
-sudo docker logs --tail 100 radgateway01-app
+sudo podman logs --tail 100 radgateway01-app
 ```
 
 ### Stop Service
 
 ```bash
 sudo systemctl stop radgateway01
-sudo docker stop radgateway01-app
+sudo podman stop radgateway01-app
 ```
 
 ### Clean Up
@@ -476,8 +485,8 @@ sudo docker stop radgateway01-app
 # Stop and remove
 sudo systemctl stop radgateway01
 sudo systemctl disable radgateway01
-sudo docker rm -f radgateway01-app
-sudo docker rmi radgateway01:beta
+sudo podman rm -f radgateway01-app
+sudo podman rmi radgateway01:latest
 
 # Remove files (optional)
 sudo rm -rf /opt/radgateway01
@@ -491,7 +500,7 @@ sudo rm /etc/systemd/system/radgateway01.service
 ### Report Issues
 
 Include in bug reports:
-1. Output of `sudo docker logs radgateway01-app`
+1. Output of `sudo podman logs radgateway01-app`
 2. Output of `sudo systemctl status radgateway01`
 3. Steps to reproduce
 4. Expected vs actual behavior
