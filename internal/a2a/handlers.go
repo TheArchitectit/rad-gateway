@@ -2,23 +2,35 @@
 package a2a
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"radgateway/internal/core"
 	"radgateway/internal/logger"
 )
 
+// TypedModelCardCache defines the interface for caching model cards.
+// This is typically implemented by cache.TypedModelCardCache.
+type TypedModelCardCache interface {
+	Get(ctx context.Context, id string) (*ModelCard, error)
+	Set(ctx context.Context, id string, card *ModelCard, ttl time.Duration) error
+	Delete(ctx context.Context, id string) error
+	InvalidateCard(ctx context.Context, id string, projectID string) error
+}
+
 // Handlers provides HTTP handlers for A2A Model Card operations.
 type Handlers struct {
-	repo         Repository
-	taskStore    TaskStore
-	task         *TaskHandlers
-	taskManager  *TaskManager
-	log          *slog.Logger
+	repo            Repository
+	taskStore       TaskStore
+	task            *TaskHandlers
+	taskManager     *TaskManager
+	modelCardCache  TypedModelCardCache
+	log             *slog.Logger
 }
 
 // NewHandlers creates new A2A handlers with the given repository.
@@ -46,6 +58,13 @@ func NewHandlersWithTaskStore(repo Repository, taskStore TaskStore, gateway *cor
 		task:      taskHandlers,
 		log:       logger.WithComponent("a2a_handlers"),
 	}
+}
+
+// NewHandlersWithCache creates new A2A handlers with model card caching.
+func NewHandlersWithCache(repo Repository, taskStore TaskStore, gateway *core.Gateway, modelCardCache TypedModelCardCache) *Handlers {
+	h := NewHandlersWithTaskStore(repo, taskStore, gateway)
+	h.modelCardCache = modelCardCache
+	return h
 }
 
 // NewHandlersWithTaskManager creates new A2A handlers with a TaskManager for task lifecycle operations.
@@ -191,6 +210,13 @@ func (h *Handlers) createModelCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Invalidate project list cache
+	if h.modelCardCache != nil {
+		if err := h.modelCardCache.InvalidateCard(r.Context(), "", card.WorkspaceID); err != nil {
+			h.log.Warn("failed to invalidate project cache", "workspace_id", card.WorkspaceID, "error", err)
+		}
+	}
+
 	h.log.Info("created model card", "id", card.ID, "workspace_id", card.WorkspaceID)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -200,12 +226,30 @@ func (h *Handlers) createModelCard(w http.ResponseWriter, r *http.Request) {
 
 // getModelCard handles GET /v1/a2a/model-cards/{id}.
 func (h *Handlers) getModelCard(w http.ResponseWriter, r *http.Request, id string) {
+	// Check cache first if available
+	if h.modelCardCache != nil {
+		cached, err := h.modelCardCache.Get(r.Context(), id)
+		if err == nil && cached != nil {
+			h.log.Debug("model card cache hit", "id", id)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(cached)
+			return
+		}
+	}
+
 	card, err := h.repo.GetByID(r.Context(), id)
 	if err != nil {
 		h.log.Warn("failed to get model card", "id", id, "error", err)
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{"error": "model card not found"})
 		return
+	}
+
+	// Cache the result if cache is available
+	if h.modelCardCache != nil {
+		if err := h.modelCardCache.Set(r.Context(), id, card, 10*time.Minute); err != nil {
+			h.log.Warn("failed to cache model card", "id", id, "error", err)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -289,6 +333,13 @@ func (h *Handlers) updateModelCard(w http.ResponseWriter, r *http.Request, id st
 		return
 	}
 
+	// Invalidate cache
+	if h.modelCardCache != nil {
+		if err := h.modelCardCache.InvalidateCard(r.Context(), id, card.WorkspaceID); err != nil {
+			h.log.Warn("failed to invalidate model card cache", "id", id, "error", err)
+		}
+	}
+
 	h.log.Info("updated model card", "id", card.ID)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -302,6 +353,13 @@ func (h *Handlers) deleteModelCard(w http.ResponseWriter, r *http.Request, id st
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{"error": "model card not found"})
 		return
+	}
+
+	// Invalidate cache
+	if h.modelCardCache != nil {
+		if err := h.modelCardCache.InvalidateCard(r.Context(), id, ""); err != nil {
+			h.log.Warn("failed to invalidate model card cache", "id", id, "error", err)
+		}
 	}
 
 	h.log.Info("deleted model card", "id", id)

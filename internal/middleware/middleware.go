@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
 	"strings"
@@ -15,6 +16,12 @@ import (
 	"radgateway/internal/rbac"
 )
 
+// hashAPIKey creates a SHA-256 hash of the API key for cache lookups.
+func hashAPIKey(key string) string {
+	hash := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(hash[:])
+}
+
 type ctxKey string
 
 const (
@@ -24,11 +31,33 @@ const (
 	KeyAPIName   ctxKey = "api_key_name"
 )
 
-type Authenticator struct {
-	keys map[string]string
-	log  *slog.Logger
+// APIKeyCache defines the interface for caching API key information.
+// This is typically implemented by cache.TypedAPIKeyCache.
+type APIKeyCache interface {
+	// Get retrieves API key info by key hash.
+	// Returns nil for cache miss.
+	Get(ctx context.Context, keyHash string) (*APIKeyInfo, error)
+	// Set stores API key info in cache.
+	Set(ctx context.Context, keyHash string, info *APIKeyInfo, ttl time.Duration) error
 }
 
+// APIKeyInfo holds cached API key information.
+type APIKeyInfo struct {
+	Name      string
+	KeyHash   string
+	ProjectID string
+	Role      string
+	RateLimit int
+	Valid     bool
+}
+
+type Authenticator struct {
+	keys        map[string]string
+	apiKeyCache APIKeyCache
+	log         *slog.Logger
+}
+
+// NewAuthenticator creates a new authenticator with in-memory key map.
 func NewAuthenticator(keys map[string]string) *Authenticator {
 	copyMap := map[string]string{}
 	for k, v := range keys {
@@ -37,6 +66,19 @@ func NewAuthenticator(keys map[string]string) *Authenticator {
 	return &Authenticator{
 		keys: copyMap,
 		log:  logger.WithComponent("middleware"),
+	}
+}
+
+// NewAuthenticatorWithCache creates a new authenticator with API key caching.
+func NewAuthenticatorWithCache(keys map[string]string, apiKeyCache APIKeyCache) *Authenticator {
+	copyMap := map[string]string{}
+	for k, v := range keys {
+		copyMap[k] = v
+	}
+	return &Authenticator{
+		keys:        copyMap,
+		apiKeyCache: apiKeyCache,
+		log:         logger.WithComponent("middleware"),
 	}
 }
 
@@ -74,12 +116,27 @@ func (a *Authenticator) Require(next http.Handler) http.Handler {
 		}
 
 		name := ""
-		for k, v := range a.keys {
-			if v == secret {
-				name = k
-				break
+
+		// Check cache first if available
+		if a.apiKeyCache != nil {
+			keyHash := hashAPIKey(secret)
+			cachedInfo, err := a.apiKeyCache.Get(r.Context(), keyHash)
+			if err == nil && cachedInfo != nil && cachedInfo.Valid {
+				name = cachedInfo.Name
+				a.log.Debug("authentication cache hit", "api_key_name", name, "path", r.URL.Path)
 			}
 		}
+
+		// If not found in cache, check in-memory keys
+		if name == "" {
+			for k, v := range a.keys {
+				if v == secret {
+					name = k
+					break
+				}
+			}
+		}
+
 		if name == "" {
 			a.log.Warn("authentication failed: invalid api key", "path", r.URL.Path, "remote_addr", r.RemoteAddr)
 			// Log to audit log if available

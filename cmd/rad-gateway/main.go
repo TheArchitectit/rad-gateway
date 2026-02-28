@@ -159,6 +159,7 @@ func main() {
 
 	// Initialize Redis cache (optional - for model card caching)
 	var modelCardCache cache.TypedModelCardCache
+	var apiKeyCache cache.TypedAPIKeyCache
 	redisAddr := getenv("RAD_REDIS_ADDR", "")
 	if redisAddr != "" {
 		redisConfig := cache.Config{
@@ -188,6 +189,7 @@ func main() {
 			} else {
 				log.Info("redis cache connected", "address", redisAddr)
 				modelCardCache = cache.NewTypedModelCardCache(redisCache, 5*time.Minute)
+				apiKeyCache = cache.NewTypedAPIKeyCache(redisCache, 5*time.Minute)
 				defer redisCache.Close()
 			}
 		}
@@ -245,9 +247,15 @@ func main() {
 
 	// Register A2A handlers (if repository is initialized)
 	if a2aRepo != nil {
-		a2aHandlers := a2a.NewHandlersWithTaskStore(a2aRepo, a2aTaskStore, gateway)
+		var a2aHandlers *a2a.Handlers
+		if modelCardCache != nil {
+			a2aHandlers = a2a.NewHandlersWithCache(a2aRepo, a2aTaskStore, gateway, modelCardCache)
+			log.Info("A2A handlers registered with model card caching")
+		} else {
+			a2aHandlers = a2a.NewHandlersWithTaskStore(a2aRepo, a2aTaskStore, gateway)
+			log.Info("A2A handlers registered")
+		}
 		a2aHandlers.Register(apiMux)
-		log.Info("A2A handlers registered")
 	}
 
 	// Register admin handlers
@@ -263,8 +271,16 @@ func main() {
 	authHandler := api.NewAuthHandler(jwtManager, userRepo)
 	authHandler.RegisterRoutes(publicMux)
 
-	// Create authenticators
-	apiKeyAuth := middleware.NewAuthenticator(cfg.APIKeys)
+	// Create authenticators with cache adapter if Redis is available
+	var apiKeyAuth *middleware.Authenticator
+	if apiKeyCache != nil {
+		// Adapter to convert cache types to middleware types
+		cacheAdapter := &apiKeyCacheAdapter{inner: apiKeyCache}
+		apiKeyAuth = middleware.NewAuthenticatorWithCache(cfg.APIKeys, cacheAdapter)
+		log.Info("API key authentication with Redis caching enabled")
+	} else {
+		apiKeyAuth = middleware.NewAuthenticator(cfg.APIKeys)
+	}
 
 	// Combine muxes with appropriate authentication
 	// Order matters: more specific paths first
@@ -413,4 +429,38 @@ func (a *auditLoggerAdapter) Log(ctx context.Context, eventType string, actor, r
 		Details:   details,
 		Timestamp: time.Now().UTC(),
 	})
+}
+
+// apiKeyCacheAdapter adapts cache.TypedAPIKeyCache to middleware.APIKeyCache
+type apiKeyCacheAdapter struct {
+	inner cache.TypedAPIKeyCache
+}
+
+func (a *apiKeyCacheAdapter) Get(ctx context.Context, keyHash string) (*middleware.APIKeyInfo, error) {
+	info, err := a.inner.Get(ctx, keyHash)
+	if err != nil {
+		return nil, err
+	}
+	if info == nil {
+		return nil, nil
+	}
+	return &middleware.APIKeyInfo{
+		Name:      info.Name,
+		KeyHash:   info.KeyHash,
+		ProjectID: info.ProjectID,
+		Role:      info.Role,
+		RateLimit: info.RateLimit,
+		Valid:     info.Valid,
+	}, nil
+}
+
+func (a *apiKeyCacheAdapter) Set(ctx context.Context, keyHash string, info *middleware.APIKeyInfo, ttl time.Duration) error {
+	return a.inner.Set(ctx, keyHash, &cache.APIKeyInfo{
+		Name:      info.Name,
+		KeyHash:   info.KeyHash,
+		ProjectID: info.ProjectID,
+		Role:      info.Role,
+		RateLimit: info.RateLimit,
+		Valid:     info.Valid,
+	}, ttl)
 }
