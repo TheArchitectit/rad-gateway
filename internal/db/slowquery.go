@@ -578,6 +578,41 @@ func extractQueryType(query string) string {
 	return "UNKNOWN"
 }
 
+// extractTableName extracts the table name from a query.
+func extractTableName(query string) string {
+	// Simple extraction - look for FROM or INTO or UPDATE
+	query = strings.ToUpper(query)
+
+	// Try to find table after FROM
+	if idx := strings.Index(query, "FROM "); idx != -1 {
+		rest := query[idx+5:]
+		words := strings.Fields(rest)
+		if len(words) > 0 {
+			return strings.Trim(words[0], "`\"")
+		}
+	}
+
+	// Try to find table after INTO
+	if idx := strings.Index(query, "INTO "); idx != -1 {
+		rest := query[idx+5:]
+		words := strings.Fields(rest)
+		if len(words) > 0 {
+			return strings.Trim(words[0], "`\"")
+		}
+	}
+
+	// Try to find table after UPDATE
+	if idx := strings.Index(query, "UPDATE "); idx != -1 {
+		rest := query[idx+7:]
+		words := strings.Fields(rest)
+		if len(words) > 0 {
+			return strings.Trim(words[0], "`\"")
+		}
+	}
+
+	return "unknown"
+}
+
 // redactSensitiveParams removes sensitive information from parameters.
 func redactSensitiveParams(params []interface{}) []interface{} {
 	// In production, implement proper parameter redaction
