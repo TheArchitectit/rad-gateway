@@ -23,6 +23,7 @@ export { Input } from './atoms/Input';
 export { Card } from './atoms/Card';
 export { Badge } from './atoms/Badge';
 export { Avatar } from './atoms/Avatar';
+export { Select, MultiSelect } from './atoms/Select';
 
 export { FormField } from './forms/FormField';
 export { SelectField } from './forms/SelectField';

@@ -3,3 +3,4 @@ export { Input } from './Input';
 export { Card } from './Card';
 export { Badge } from './Badge';
 export { Avatar } from './Avatar';
+export { Select, MultiSelect } from './Select';
