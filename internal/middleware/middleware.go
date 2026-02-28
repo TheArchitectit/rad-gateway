@@ -6,10 +6,12 @@ import (
 	"encoding/hex"
 	"net/http"
 	"strings"
+	"time"
 
 	"log/slog"
 
 	"radgateway/internal/logger"
+	"radgateway/internal/metrics"
 	"radgateway/internal/rbac"
 )
 
@@ -271,4 +273,46 @@ func GetUserContext(ctx context.Context) *rbac.UserContext {
 // IsAdmin checks if the user in context is an admin.
 func IsAdmin(ctx context.Context) bool {
 	return rbac.IsAdmin(ctx)
+}
+
+// responseRecorder wraps http.ResponseWriter to capture status code
+type responseRecorder struct {
+	http.ResponseWriter
+	statusCode int
+	written    bool
+}
+
+func (rr *responseRecorder) WriteHeader(code int) {
+	if !rr.written {
+		rr.statusCode = code
+		rr.written = true
+	}
+	rr.ResponseWriter.WriteHeader(code)
+}
+
+func (rr *responseRecorder) Write(b []byte) (int, error) {
+	if !rr.written {
+		rr.statusCode = http.StatusOK
+		rr.written = true
+	}
+	return rr.ResponseWriter.Write(b)
+}
+
+// WithMetrics wraps an HTTP handler to collect metrics for each request.
+// It records request count, duration, and error rates.
+func WithMetrics(collector *metrics.Collector) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			recorder := &responseRecorder{
+				ResponseWriter: w,
+				statusCode:     http.StatusOK,
+			}
+
+			next.ServeHTTP(recorder, r)
+
+			duration := time.Since(start)
+			collector.RecordHTTPRequest(duration, recorder.statusCode)
+		})
+	}
 }

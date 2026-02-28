@@ -23,6 +23,7 @@ import (
 	"radgateway/internal/db"
 	"radgateway/internal/logger"
 	"radgateway/internal/mcp"
+	"radgateway/internal/metrics"
 	"radgateway/internal/middleware"
 	"radgateway/internal/oauth"
 	"radgateway/internal/provider"
@@ -72,6 +73,10 @@ func main() {
 	// Initialize structured logger first
 	logger.Init(logger.DefaultConfig())
 	log := logger.WithComponent("main")
+
+	// Initialize metrics collector
+	metricsCollector := metrics.NewCollector()
+	log.Info("metrics collector initialized")
 
 	// Initialize Infisical secrets manager (optional)
 	var secretLoader *secrets.Loader
@@ -269,34 +274,13 @@ func main() {
 
 	// Public endpoints (no auth required)
 	combinedMux.Handle("/v1/auth/", publicMux)
-	combinedMux.Handle("/health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
 
-		// Check database health if available
-		dbStatus := "ok"
-		dbHealthy := true
-		if database != nil {
-			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-			defer cancel()
-			if err := database.Ping(ctx); err != nil {
-				dbStatus = "degraded"
-				dbHealthy = false
-			}
-		} else {
-			dbStatus = "not_configured"
-		}
+	// Register health and metrics endpoints
+	healthHandler := api.NewHealthHandler(database)
+	healthHandler.RegisterRoutes(combinedMux)
 
-		// Return appropriate status code
-		if !dbHealthy {
-			w.WriteHeader(http.StatusServiceUnavailable)
-		} else {
-			w.WriteHeader(http.StatusOK)
-		}
-
-		response := fmt.Sprintf(`{"status":"ok","database":"%s","driver":"%s"}`, dbStatus, dbDriverUsed)
-		log.Info("health check", "dbDriverUsed", dbDriverUsed, "db_var_addr", fmt.Sprintf("%p", &dbDriverUsed))
-		w.Write([]byte(response))
-	}))
+	// Register Prometheus metrics endpoint
+	combinedMux.Handle("/metrics", metricsCollector.Handler())
 
 	// TODO: Wire up A2A handlers with proper repository
 	// a2a.NewHandlers(repo).Register(combinedMux)
@@ -340,6 +324,7 @@ func main() {
 	handler := middleware.WithRequestContext(combinedMux)
 	handler = middleware.WithSecurityHeaders(handler) // Add security headers
 	handler = middleware.WithCORS(handler)
+	handler = middleware.WithMetrics(metricsCollector)(handler) // Add metrics collection
 
 	// Add rate limiting middleware
 	rateLimiter := middleware.NewRateLimiter(middleware.DefaultRateLimitConfig())
